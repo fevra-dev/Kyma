@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SonicVault — Solana Pay Receiver</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; background: #0a0a0a; color: #eee; }
+    h1 { color: #9945FF; font-size: 1.4rem; }
+    .card { background: #1a1a2e; border-radius: 12px; padding: 20px; margin: 16px 0; }
+    .sas { font-size: 2.4rem; font-weight: bold; letter-spacing: 0.3em; color: #14F195; font-family: monospace; text-align: center; padding: 16px; }
+    .status { color: #aaa; font-size: 0.9rem; min-height: 40px; }
+    .warn { background: #2d1a00; border: 1px solid #ff6b00; border-radius: 8px; padding: 12px; color: #ffaa44; }
+    .error { background: #2d0000; border: 1px solid #ff4444; border-radius: 8px; padding: 12px; color: #ff8888; }
+    .ok { background: #002d1a; border: 1px solid #14F195; border-radius: 8px; padding: 12px; color: #14F195; }
+    button { background: #9945FF; color: #fff; border: none; padding: 12px 24px; border-radius: 8px; font-size: 1rem; cursor: pointer; width: 100%; margin-top: 8px; }
+    button:disabled { background: #444; cursor: not-allowed; }
+    .mode-toggle { display: flex; gap: 8px; margin-bottom: 12px; }
+    .mode-btn { flex: 1; padding: 8px; border-radius: 6px; border: 1px solid #444; background: #111; color: #aaa; cursor: pointer; font-size: 0.85rem; }
+    .mode-btn.active { border-color: #9945FF; color: #9945FF; }
+  </style>
+</head>
+<body>
+
+<h1>🔊 Solana Pay — Pay by Ear</h1>
+<p style="color:#888; font-size:0.9rem;">Receive acoustic Solana Pay requests. No network needed.</p>
+
+<div class="card">
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="btnGgwave" onclick="setMode('ggwave')">🎵 ggwave (default)</button>
+    <button class="mode-btn" id="btnOfdm" onclick="setMode('ofdm')">⚡ OFDM (high speed)</button>
+  </div>
+  <button id="listenBtn" onclick="toggleListen()">🎙 LISTEN</button>
+  <div class="status" id="statusMsg">Ready. Tap LISTEN then hold devices close.</div>
+</div>
+
+<div id="sasCard" class="card" style="display:none">
+  <div style="color:#aaa; font-size:0.85rem; margin-bottom:4px;">Session code — confirm sender matches:</div>
+  <div class="sas" id="sasDisplay">——</div>
+  <button onclick="dismissSas()">✓ Confirmed</button>
+  <button onclick="abortSession()" style="background:#660000; margin-top:6px;">✗ Codes don't match</button>
+</div>
+
+<div id="resultCard" class="card" style="display:none">
+  <div id="resultContent"></div>
+  <a id="payLink" href="#" style="display:none">
+    <button style="background:#14F195; color:#000; margin-top:12px;">💸 PAY</button>
+  </a>
+</div>
+
+<!-- ggwave WASM -->
+<script src="ggwave.js"></script>
+
+<!-- quiet-js for OFDM fallback (Phase v2.0) -->
+<!-- <script src="https://quiet.github.io/quiet-js/dist/quiet.js"></script> -->
+
+<script>
+// ─── Constants ────────────────────────────────────────────────────────────────
+const EXPIRY_SECONDS     = 60;          // Phase v1.1: reduced from 120 → 60
+const SONICVAULT_VER_V1  = 0x01;
+const SONICVAULT_VER_V2  = 0x02;
+const MIN_PAYLOAD_SIZE   = 94;          // matches ReceiverPipeline.kt MIN_SIZE_V1
+
+// ─── State ────────────────────────────────────────────────────────────────────
+let ggwaveInstance = null;
+let audioContext   = null;
+let analyserNode   = null;
+let mediaStream    = null;
+let processorNode  = null;
+let isListening    = false;
+let currentMode    = 'ggwave';
+let quietReceiver  = null;
+
+// ─── Mode toggle ─────────────────────────────────────────────────────────────
+function setMode(mode) {
+    currentMode = mode;
+    document.getElementById('btnGgwave').classList.toggle('active', mode === 'ggwave');
+    document.getElementById('btnOfdm').classList.toggle('active',   mode === 'ofdm');
+
+    if (isListening) {
+        stopListening();
+        startListening();
+    }
+    console.log(`[WebReceiver] Mode switched to: ${mode}`);
+}
+
+// ─── Listen toggle ────────────────────────────────────────────────────────────
+function toggleListen() {
+    if (isListening) stopListening();
+    else             startListening();
+}
+
+async function startListening() {
+    setStatus('Requesting microphone...', 'neutral');
+    try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false } });
+    } catch (e) {
+        setStatus(`Microphone denied: ${e.message}`, 'error');
+        return;
+    }
+
+    if (currentMode === 'ggwave') {
+        await startGgwave();
+    } else {
+        startOfdm();
+    }
+
+    isListening = true;
+    document.getElementById('listenBtn').textContent = '⏹ STOP';
+    setStatus('Listening… hold devices within 30cm, max volume.', 'neutral');
+}
+
+function stopListening() {
+    isListening = false;
+    document.getElementById('listenBtn').textContent = '🎙 LISTEN';
+    setStatus('Stopped.', 'neutral');
+
+    if (processorNode) { processorNode.disconnect(); processorNode = null; }
+    if (mediaStream)   { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+    if (quietReceiver) { Quiet?.receiver?.destroy(quietReceiver); quietReceiver = null; }
+
+    console.log('[WebReceiver] Listening stopped, resources released');
+}
+
+// ─── ggwave receive ───────────────────────────────────────────────────────────
+async function startGgwave() {
+    console.log('[WebReceiver][ggwave] Initializing ggwave-wasm...');
+
+    if (!ggwaveInstance) {
+        ggwaveInstance = ggwave_factory();
+        await new Promise(resolve => { if (ggwaveInstance.isReady) resolve(); else ggwaveInstance.onRuntimeInitialized = resolve; });
+        console.log('[WebReceiver][ggwave] ggwave-wasm ready');
+    }
+
+    const instance = ggwaveInstance.init(0, 48000, 48000);
+    audioContext   = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+    const source   = audioContext.createMediaStreamSource(mediaStream);
+    processorNode  = audioContext.createScriptProcessor(1024, 1, 1);
+
+    processorNode.onaudioprocess = (e) => {
+        const input   = e.inputBuffer.getChannelData(0);
+        const int16   = new Int16Array(input.length);
+        for (let i = 0; i < input.length; i++) int16[i] = Math.max(-32768, Math.min(32767, input[i] * 32768));
+
+        const result = ggwaveInstance.decode(instance, int16.buffer);
+        if (result && result.length > 0) {
+            console.log(`[WebReceiver][ggwave] Raw received: ${result.length} bytes`);
+            handleRawBytes(new Uint8Array(result));
+        }
+    };
+
+    source.connect(processorNode);
+    processorNode.connect(audioContext.destination);
+}
+
+// ─── quiet-js OFDM receive (Phase v2.0) ──────────────────────────────────────
+function startOfdm() {
+    console.log('[WebReceiver][OFDM] Initializing quiet-js...');
+
+    // Requires quiet-js CDN script to be loaded:
+    // <script src="https://quiet.github.io/quiet-js/dist/quiet.js"></script>
+    if (typeof Quiet === 'undefined') {
+        setStatus('OFDM mode unavailable — quiet-js not loaded.', 'error');
+        console.error('[WebReceiver][OFDM] quiet-js not loaded. Add CDN script tag.');
+        return;
+    }
+
+    Quiet.init({
+        profilesPrefix: 'https://quiet.github.io/quiet-js/dist/',
+        onReady: () => {
+            console.log('[WebReceiver][OFDM] quiet-js initialized');
+            quietReceiver = Quiet.receiver({
+                profile: 'ultrasonic',
+                onReceive: (data) => {
+                    console.log(`[WebReceiver][OFDM] Received ${data.length} bytes`);
+                    handleRawBytes(new Uint8Array(data));
+                },
+                onReceiveFail: (numFails) => {
+                    console.warn(`[WebReceiver][OFDM] Receive failures: ${numFails}`);
+                }
+            });
+        },
+        onFail: (reason) => {
+            console.error('[WebReceiver][OFDM] init failed:', reason);
+            setStatus(`OFDM mode unavailable: ${reason}`, 'error');
+        }
+    });
+}
+
+// ─── Frame validation pipeline (mirrors ReceiverPipeline.kt) ─────────────────
+function handleRawBytes(bytes) {
+    console.log(`[WebReceiver] handleRawBytes: ${bytes.length} bytes`);
+
+    // GATE 1: Minimum size
+    if (bytes.length < MIN_PAYLOAD_SIZE) {
+        // Could be a plain text payload (non-SonicVault ggwave message) — show as text
+        const text = new TextDecoder().decode(bytes).trim();
+        console.log(`[WebReceiver] Non-SonicVault payload (${bytes.length}B): "${text}"`);
+        tryHandleSolanaPayUri(text);
+        return;
+    }
+
+    // GATE 2: Version byte
+    const version = bytes[0];
+    if (version !== SONICVAULT_VER_V1 && version !== SONICVAULT_VER_V2) {
+        const text = new TextDecoder().decode(bytes).trim();
+        console.log(`[WebReceiver] Non-SonicVault version byte 0x${version.toString(16)}, treating as text: "${text}"`);
+        tryHandleSolanaPayUri(text);
+        return;
+    }
+    console.log(`[WebReceiver] SonicVault version byte OK: 0x${version.toString(16)}`);
+
+    // For web receiver: crypto decryption not available without the private key.
+    // Show SAS and indicate that the app must be used for full decryption.
+    setStatus(`⚠️ Encrypted SonicVault payload received (${bytes.length} bytes). Use the Android app to decrypt.`, 'warn');
+}
+
+// ─── Solana Pay URI handling ──────────────────────────────────────────────────
+function tryHandleSolanaPayUri(text) {
+    if (!text.startsWith('solana:')) {
+        if (text.length > 0) {
+            setStatus(`Received: ${text.substring(0, 80)}`, 'ok');
+            console.log(`[WebReceiver] Non-Solana text: "${text}"`);
+        }
+        return;
+    }
+
+    console.log(`[WebReceiver] Solana Pay URI received: ${text.substring(0, 100)}...`);
+
+    // Parse timestamp for replay protection
+    const memoMatch = text.match(/memo=ts:(\d+)/);
+    if (memoMatch) {
+        const ts  = parseInt(memoMatch[1], 10);
+        const now = Math.floor(Date.now() / 1000);
+        const age = now - ts;
+
+        console.log(`[WebReceiver] URI received. Timestamp: ${ts}, Age: ${age}s, Expiry: ${EXPIRY_SECONDS}s, Valid: ${age <= EXPIRY_SECONDS}`);
+
+        if (age > EXPIRY_SECONDS) {
+            console.warn(`[WebReceiver] REJECTED: URI expired by ${age - EXPIRY_SECONDS}s`);
+            showError(`Payment request expired (${age}s old, limit ${EXPIRY_SECONDS}s). Ask merchant to regenerate.`);
+            return;
+        }
+    }
+
+    showSolanaPayResult(text);
+}
+
+function showSolanaPayResult(uri) {
+    const result = document.getElementById('resultCard');
+    const content = document.getElementById('resultContent');
+    const payLink = document.getElementById('payLink');
+
+    // Parse URI components for display
+    const parts   = uri.replace('solana:', '').split('?');
+    const address = parts[0];
+    const params  = new URLSearchParams(parts[1] || '');
+    const amount  = params.get('amount') || '?';
+    const label   = params.get('label') || 'Unknown merchant';
+
+    content.innerHTML = `
+        <div class="ok">
+            <strong>✓ Payment Request Received</strong><br/>
+            <span style="color:#aaa">Merchant: ${escapeHtml(label)}</span><br/>
+            <span style="color:#14F195; font-size:1.2rem">${escapeHtml(amount)} SOL</span><br/>
+            <span style="color:#666; font-size:0.75rem; word-break:break-all">${escapeHtml(address.substring(0, 20))}...</span>
+        </div>`;
+
+    payLink.href = uri;
+    payLink.style.display = 'block';
+    result.style.display  = 'block';
+
+    setStatus(`Payment request from ${escapeHtml(label)} — ${escapeHtml(amount)} SOL`, 'ok');
+    console.log(`[WebReceiver] Solana Pay URI presented to user. Recipient: ${address}, Amount: ${amount}`);
+}
+
+// ─── SAS display (for future ECDH integration) ────────────────────────────────
+function showSas(sasString) {
+    document.getElementById('sasDisplay').textContent = sasString;
+    document.getElementById('sasCard').style.display  = 'block';
+    console.log(`[WebReceiver] SAS displayed: ${sasString}`);
+}
+
+function dismissSas() {
+    document.getElementById('sasCard').style.display = 'none';
+}
+
+function abortSession() {
+    stopListening();
+    document.getElementById('sasCard').style.display = 'none';
+    showError('Session aborted. SAS codes did not match — possible MITM attempt.');
+}
+
+// ─── UI helpers ───────────────────────────────────────────────────────────────
+function setStatus(msg, type = 'neutral') {
+    const el = document.getElementById('statusMsg');
+    el.textContent = msg;
+    el.className   = type === 'error' ? 'status error' : type === 'ok' ? 'status ok' : 'status';
+}
+
+function showError(msg) {
+    const result = document.getElementById('resultCard');
+    document.getElementById('resultContent').innerHTML = `<div class="error">⚠️ ${escapeHtml(msg)}</div>`;
+    document.getElementById('payLink').style.display   = 'none';
+    result.style.display = 'block';
+    setStatus(msg, 'error');
+}
+
+function dismissSas() { document.getElementById('sasCard').style.display = 'none'; }
+
+function escapeHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://cdn.jsdelivr.net;">
+    <title>PAY BY EAR</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg:        #1c1c1e;
+            --panel:     #232326;
+            --chrome-hi: #4a4a50;
+            --chrome-lo: #111113;
+            --chrome-md: #2e2e33;
+            --green:     #6dbf67;
+            --green-dim: #3a7a36;
+            --amber:     #c8a84b;
+            --text-pri:  #c8c8cc;
+            --text-sec:  #6a6a70;
+            --text-dim:  #3d3d42;
+            --inset-shadow: inset 0 2px 8px rgba(0,0,0,0.7), inset 0 1px 2px rgba(0,0,0,0.9);
+            --raise-shadow: 0 2px 6px rgba(0,0,0,0.6), 0 1px 2px rgba(255,255,255,0.04);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background: var(--bg);
+            background-image:
+                radial-gradient(ellipse at 50% 0%, rgba(80,80,90,0.08) 0%, transparent 65%);
+            color: var(--text-pri);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 2rem 1.5rem;
+            gap: 0;
+        }
+
+        /* ── TITLE ─────────────────────────────────── */
+        .title {
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 300;
+            font-size: clamp(0.9rem, 2.5vw, 1.05rem);
+            letter-spacing: 0.38em;
+            color: var(--text-sec);
+            text-transform: uppercase;
+            margin-bottom: 2.4rem;
+            user-select: none;
+        }
+
+        /* ── VU METER ──────────────────────────────── */
+        .vu-housing {
+            width: min(380px, 88vw);
+            background:
+                linear-gradient(180deg, #2a2a2d 0%, #1e1e21 60%, #1a1a1c 100%);
+            border-radius: 6px;
+            border: 1px solid var(--chrome-hi);
+            border-bottom-color: var(--chrome-lo);
+            box-shadow:
+                0 4px 24px rgba(0,0,0,0.8),
+                0 1px 0 rgba(255,255,255,0.05),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+            padding: 16px 20px 14px;
+            position: relative;
+            margin-bottom: 1.8rem;
+        }
+
+        .vu-label {
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 500;
+            font-size: 0.65rem;
+            letter-spacing: 0.28em;
+            color: var(--text-sec);
+            text-align: center;
+            margin-bottom: 10px;
+        }
+
+        .vu-face {
+            background:
+                radial-gradient(ellipse at 50% 110%, #1a2e1a 0%, #0d1a0d 40%, #0a0f0a 100%);
+            border-radius: 4px;
+            border: 1px solid #0d0d0f;
+            box-shadow: var(--inset-shadow);
+            padding: 14px 14px 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Subtle scanline texture on face */
+        .vu-face::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 2px,
+                rgba(0,0,0,0.12) 2px,
+                rgba(0,0,0,0.12) 3px
+            );
+            pointer-events: none;
+        }
+
+        /* SVG meter */
+        #vu-svg {
+            width: 100%;
+            display: block;
+        }
+
+        /* ── STATUS ROW ───────────────────────────── */
+        .status-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 1.5rem;
+            min-height: 20px;
+        }
+
+        #status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            flex-shrink: 0;
+            box-shadow: 0 0 0 0 transparent;
+            transition: background 0.3s;
+        }
+        #status-dot.active {
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+            animation: dot-pulse 1.6s ease-in-out infinite;
+        }
+        #status-dot.error { background: #e05050; box-shadow: 0 0 6px #e05050; }
+
+        @keyframes dot-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.45; }
+        }
+
+        #status-text {
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 500;
+            font-size: 0.8rem;
+            letter-spacing: 0.18em;
+            color: var(--text-sec);
+            text-transform: uppercase;
+        }
+        #status-text.active { color: var(--green); }
+        #status-text.error  { color: #e05050; }
+        #status-text.ready  { color: var(--amber); }
+
+        /* ── DATA DISPLAY ─────────────────────────── */
+        #output-box {
+            width: min(380px, 88vw);
+            background: linear-gradient(180deg, #171719 0%, #141416 100%);
+            border: 1px solid #2a2a2e;
+            border-radius: 4px;
+            padding: 14px 18px;
+            margin-bottom: 0.7rem;
+            box-shadow: var(--inset-shadow);
+            min-height: 64px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        #output-label {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.68rem;
+            letter-spacing: 0.2em;
+            color: var(--text-sec);
+            text-transform: uppercase;
+        }
+
+        #output-value {
+            font-family: 'Share Tech Mono', monospace;
+            font-size: 1.05rem;
+            color: var(--text-pri);
+            letter-spacing: 0.05em;
+            text-align: center;
+            word-break: break-all;
+        }
+
+        /* ── HINT ─────────────────────────────────── */
+        .hint {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.7rem;
+            letter-spacing: 0.15em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            margin-bottom: 2.4rem;
+        }
+
+        /* ── PAY SECTION ──────────────────────────── */
+        #paySection {
+            display: none;
+            width: min(380px, 88vw);
+            margin-bottom: 1.6rem;
+        }
+        #paySection.visible {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            animation: fadeUp 0.35s ease-out;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .pay-summary {
+            background: linear-gradient(180deg, #171719 0%, #141416 100%);
+            border: 1px solid #2a2a2e;
+            border-radius: 4px;
+            padding: 14px 18px;
+            box-shadow: var(--inset-shadow);
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.85rem;
+            letter-spacing: 0.08em;
+            color: var(--text-sec);
+            line-height: 1.7;
+        }
+        .pay-summary strong {
+            color: var(--text-pri);
+            font-weight: 600;
+        }
+
+        .btn-pay {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(180deg, #4a9e46 0%, #3a7e37 100%);
+            color: #0a1a0a;
+            border: 1px solid #3a7e37;
+            border-bottom-color: #2a5e27;
+            border-radius: 4px;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 600;
+            font-size: 0.85rem;
+            letter-spacing: 0.3em;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.07) inset;
+            transition: opacity 0.15s, transform 0.1s;
+        }
+        .btn-pay:hover { opacity: 0.88; }
+        .btn-pay:active { transform: translateY(1px); }
+
+        .btn-listen-again {
+            width: 100%;
+            padding: 12px;
+            background: transparent;
+            color: var(--text-sec);
+            border: 1px solid #2e2e33;
+            border-radius: 4px;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 500;
+            font-size: 0.8rem;
+            letter-spacing: 0.25em;
+            cursor: pointer;
+            transition: border-color 0.2s, color 0.2s;
+        }
+        .btn-listen-again:hover { border-color: #4a4a52; color: var(--text-pri); }
+
+        /* ── RAMS TOGGLE SWITCH ───────────────────── */
+        .switch-block {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toggle-track {
+            position: relative;
+            width: 72px;
+            height: 36px;
+            background: linear-gradient(180deg, #111113 0%, #1a1a1d 100%);
+            border-radius: 18px;
+            border: 1px solid #111;
+            border-top-color: #0a0a0c;
+            box-shadow:
+                var(--inset-shadow),
+                0 0 0 1px rgba(255,255,255,0.04);
+            cursor: pointer;
+            transition: box-shadow 0.2s;
+        }
+
+        .toggle-knob {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: 26px;
+            height: 26px;
+            border-radius: 13px;
+            background: linear-gradient(160deg, #4a4a52 0%, #2e2e34 50%, #252528 100%);
+            border: 1px solid #111;
+            border-top-color: #5a5a62;
+            box-shadow:
+                0 2px 6px rgba(0,0,0,0.7),
+                0 1px 0 rgba(255,255,255,0.08) inset,
+                0 -1px 0 rgba(0,0,0,0.4) inset;
+            transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .toggle-track.on .toggle-knob {
+            transform: translateX(36px);
+        }
+
+        .toggle-track.on {
+            box-shadow:
+                var(--inset-shadow),
+                0 0 0 1px rgba(109,191,103,0.15),
+                0 0 12px rgba(109,191,103,0.06);
+        }
+
+        /* tiny LED on knob */
+        .toggle-knob::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: #2a2a2e;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.8);
+            transition: background 0.2s, box-shadow 0.2s;
+        }
+
+        .toggle-track.on .toggle-knob::after {
+            background: var(--green);
+            box-shadow: 0 0 6px var(--green), inset 0 1px 1px rgba(255,255,255,0.3);
+        }
+
+        .switch-label {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 0.68rem;
+            letter-spacing: 0.28em;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            user-select: none;
+        }
+
+        /* ── STAR MARK ────────────────────────────── */
+        .star-mark {
+            position: fixed;
+            bottom: 20px;
+            right: 22px;
+            opacity: 0.18;
+            user-select: none;
+        }
+        .star-mark svg { width: 18px; height: 18px; }
+
+        /* ── NEEDLE ANIMATION ─────────────────────── */
+        @keyframes needle-idle {
+            0%   { transform: rotate(-52deg); }
+            20%  { transform: rotate(-45deg); }
+            50%  { transform: rotate(-55deg); }
+            75%  { transform: rotate(-48deg); }
+            100% { transform: rotate(-52deg); }
+        }
+        @keyframes needle-active {
+            0%   { transform: rotate(-10deg); }
+            15%  { transform: rotate(30deg); }
+            30%  { transform: rotate(10deg); }
+            45%  { transform: rotate(38deg); }
+            60%  { transform: rotate(15deg); }
+            80%  { transform: rotate(42deg); }
+            100% { transform: rotate(-10deg); }
+        }
+
+        #vu-needle {
+            transform-origin: 50% 100%;
+            transform: rotate(-52deg);
+            animation: needle-idle 3.5s ease-in-out infinite;
+        }
+        #vu-needle.active {
+            animation: needle-active 0.9s ease-in-out infinite;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="title">PAY BY EAR</div>
+
+    <!-- VU METER -->
+    <div class="vu-housing">
+        <div class="vu-label">LISTEN</div>
+        <div class="vu-face">
+            <svg id="vu-svg" viewBox="0 0 340 120" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <!-- scale arc clipping -->
+                    <radialGradient id="faceGrad" cx="50%" cy="100%" r="90%">
+                        <stop offset="0%" stop-color="#1a2e1a"/>
+                        <stop offset="100%" stop-color="#0a0f0a"/>
+                    </radialGradient>
+                </defs>
+
+                <!-- Face bg fill -->
+                <rect width="340" height="120" fill="url(#faceGrad)" rx="3"/>
+
+                <!-- Arc scale ticks — centre bottom at (170, 130), radius 108 -->
+                <!-- Green zone ticks (right side, 0 to +3dB) -->
+                <g id="scale-ticks">
+                    <!-- We'll draw scale ticks via JS below for precision -->
+                </g>
+
+                <!-- Scale labels -->
+                <!-- Generated by the script below -->
+                <g id="scale-labels"></g>
+
+                <!-- Needle shadow -->
+                <line id="vu-needle-shadow"
+                    x1="170" y1="130" x2="170" y2="28"
+                    stroke="rgba(0,0,0,0.45)" stroke-width="2.5"
+                    stroke-linecap="round"
+                    style="transform-origin:170px 130px; transform:rotate(-52deg) translate(1px,1px);"
+                />
+
+                <!-- Needle -->
+                <g id="vu-needle">
+                    <line x1="170" y1="130" x2="170" y2="26"
+                        stroke="#c8c8aa" stroke-width="1.6"
+                        stroke-linecap="round"
+                    />
+                    <!-- needle tip highlight -->
+                    <line x1="170" y1="26" x2="170" y2="36"
+                        stroke="rgba(255,255,200,0.5)" stroke-width="0.8"
+                        stroke-linecap="round"
+                    />
+                </g>
+
+                <!-- Pivot -->
+                <circle cx="170" cy="130" r="5" fill="#1e1e20" stroke="#3a3a3e" stroke-width="1"/>
+                <circle cx="170" cy="130" r="2.5" fill="#4a4a52"/>
+                <circle cx="170" cy="130" r="1" fill="#6a6a72"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- STATUS -->
+    <div class="status-row">
+        <div id="status-dot"></div>
+        <div id="status-text">TAP TO LISTEN</div>
+    </div>
+
+    <!-- DATA DISPLAY -->
+    <div id="output-box">
+        <div id="output-label" style="display:none;"></div>
+        <div id="output-value" style="color: var(--text-dim);">HOLD DEVICE NEAR SOUND</div>
+    </div>
+
+    <div class="hint">SOLANA DATA OVER SOUND</div>
+
+    <!-- PAY SECTION -->
+    <div id="paySection">
+        <div class="pay-summary" id="paySummary"></div>
+        <button class="btn-pay" id="payBtn" onclick="openWallet()">PAY</button>
+        <button class="btn-listen-again" onclick="listenAgain()">LISTEN AGAIN</button>
+    </div>
+
+    <!-- RAMS TOGGLE SWITCH -->
+    <div class="switch-block">
+        <div class="toggle-track" id="mainToggle" onclick="handleToggle()">
+            <div class="toggle-knob"></div>
+        </div>
+        <div class="switch-label" id="toggleLabel">LISTEN</div>
+    </div>
+
+    <!-- Star watermark -->
+    <div class="star-mark">
+        <svg viewBox="0 0 24 24" fill="var(--text-pri)">
+            <path d="M12 2 L13.2 10.8 L22 12 L13.2 13.2 L12 22 L10.8 13.2 L2 12 L10.8 10.8 Z"/>
+        </svg>
+    </div>
+
+    <script>
+    /* ── Draw VU scale ──────────────────────────── */
+    (function() {
+        const svg = document.getElementById('vu-svg');
+        const cx = 170, cy = 130, R = 108;
+
+        // dB scale: -20, -10, -7, -5, -3, -1, 0, +1, +3
+        // Map to angle: -70° (left) to +35° (right), 0dB at ~+15°
+        // Physical: leftmost = -20dB, rightmost = +3dB
+        const marks = [
+            { db: -20, label: '-20', color: '#3a5a3a' },
+            { db: -10, label: '-10', color: '#3a5a3a' },
+            { db: -7,  label: '-7',  color: '#3a5a3a' },
+            { db: -5,  label: '-5',  color: '#3a5a3a' },
+            { db: -3,  label: '-3',  color: '#4a7a44' },
+            { db: -1,  label: '-1',  color: '#5a9654' },
+            { db: 0,   label: '0',   color: '#6dbf67' },
+            { db: 1,   label: '+1',  color: '#6dbf67' },
+            { db: 3,   label: '+3',  color: '#6dbf67' },
+        ];
+
+        function dbToAngle(db) {
+            // map -20..+3 to -70..+35 degrees
+            const minDb = -20, maxDb = 3;
+            const minA = -70, maxA = 35;
+            return minA + (db - minDb) / (maxDb - minDb) * (maxA - minA);
+        }
+
+        function polar(angleDeg, r) {
+            const rad = (angleDeg - 90) * Math.PI / 180;
+            return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+        }
+
+        const ticksG = document.getElementById('scale-ticks');
+        const labelsG = document.getElementById('scale-labels');
+
+        // Draw minor ticks between marks (every 1dB from -20 to +3)
+        for (let db = -20; db <= 3; db++) {
+            const a = dbToAngle(db);
+            const isMinor = !marks.find(m => m.db === db);
+            const outerR = isMinor ? R - 10 : R - 6;
+            const innerR = R - 18;
+            const p1 = polar(a, outerR);
+            const p2 = polar(a, innerR);
+
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', p1.x);
+            line.setAttribute('y1', p1.y);
+            line.setAttribute('x2', p2.x);
+            line.setAttribute('y2', p2.y);
+            line.setAttribute('stroke', db >= 0 ? '#6dbf67' : db >= -3 ? '#4a7a44' : '#2a4a2a');
+            line.setAttribute('stroke-width', isMinor ? '0.8' : '1.4');
+            line.setAttribute('stroke-linecap', 'round');
+            ticksG.appendChild(line);
+        }
+
+        // Draw labels
+        marks.forEach(m => {
+            const a = dbToAngle(m.db);
+            const lp = polar(a, R - 28);
+            const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            t.setAttribute('x', lp.x);
+            t.setAttribute('y', lp.y + 4);
+            t.setAttribute('text-anchor', 'middle');
+            t.setAttribute('font-family', 'Rajdhani, sans-serif');
+            t.setAttribute('font-size', '8');
+            t.setAttribute('font-weight', '500');
+            t.setAttribute('fill', m.color);
+            t.setAttribute('letter-spacing', '0.02em');
+            t.textContent = m.label;
+            labelsG.appendChild(t);
+        });
+
+        // Arc line
+        const arcPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        const startA = dbToAngle(-20), endA = dbToAngle(3);
+        function arcPoint(angle, r) {
+            const p = polar(angle, r);
+            return `${p.x},${p.y}`;
+        }
+        const sP = polar(startA, R - 6);
+        const eP = polar(endA, R - 6);
+        arcPath.setAttribute('d',
+            `M ${sP.x} ${sP.y} A ${R-6} ${R-6} 0 0 1 ${eP.x} ${eP.y}`
+        );
+        arcPath.setAttribute('fill', 'none');
+        arcPath.setAttribute('stroke', '#1e3a1e');
+        arcPath.setAttribute('stroke-width', '0.6');
+        ticksG.insertBefore(arcPath, ticksG.firstChild);
+    })();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/ggwave@0.4.0/ggwave.js"></script>
+    <script>
+        /* ── App state ──────────────────────────── */
+        let isListening = false;
+        let audioContext;
+        let ggwaveInstance;
+        let mediaStream = null;
+        let currentUri = null;
+
+        const REPLAY_STALE_SECONDS = 60;
+        const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+        /* ── UI helpers ─────────────────────────── */
+        function setStatus(text, mode /* 'idle'|'active'|'error'|'ready' */) {
+            const dot = document.getElementById('status-dot');
+            const txt = document.getElementById('status-text');
+            txt.textContent = text;
+            dot.className = mode === 'active' ? 'active' : mode === 'error' ? 'error' : '';
+            txt.className  = mode === 'active' ? 'active' : mode === 'error' ? 'error' : mode === 'ready' ? 'ready' : '';
+        }
+
+        function setOutput(label, value, dimValue) {
+            const lEl = document.getElementById('output-label');
+            const vEl = document.getElementById('output-value');
+            if (label) {
+                lEl.style.display = '';
+                lEl.textContent = label;
+            } else {
+                lEl.style.display = 'none';
+            }
+            vEl.textContent = value || '';
+            vEl.style.color = dimValue ? 'var(--text-dim)' : 'var(--text-pri)';
+        }
+
+        function setNeedle(active) {
+            const n = document.getElementById('vu-needle');
+            if (active) {
+                n.classList.add('active');
+            } else {
+                n.classList.remove('active');
+            }
+        }
+
+        function setToggle(on) {
+            const t = document.getElementById('mainToggle');
+            const l = document.getElementById('toggleLabel');
+            if (on) {
+                t.classList.add('on');
+                l.textContent = 'STOP';
+            } else {
+                t.classList.remove('on');
+                l.textContent = 'LISTEN';
+            }
+        }
+
+        function handleToggle() {
+            if (isListening) {
+                stopListening();
+                updateIdleUI();
+            } else {
+                startListening();
+            }
+        }
+
+        /* ── Parsers ────────────────────────────── */
+        function isValidBase58(s) {
+            if (!s || s.length < 32 || s.length > 44) return false;
+            return [...s].every(c => BASE58.includes(c));
+        }
+
+        function parseSolanaPayUri(str) {
+            const trimmed = str.trim();
+            if (!trimmed.startsWith('solana:')) return null;
+            const withoutScheme = trimmed.slice(7);
+            const qIdx = withoutScheme.indexOf('?');
+            const recipient = (qIdx === -1 ? withoutScheme : withoutScheme.slice(0, qIdx)).trim();
+            if (!recipient || !isValidBase58(recipient)) return null;
+
+            let amount = null, label = null, message = null, memo = null;
+            if (qIdx >= 0) {
+                const query = withoutScheme.slice(qIdx + 1);
+                query.split('&').forEach(p => {
+                    const eq = p.indexOf('=');
+                    if (eq < 0) return;
+                    const k = p.slice(0, eq).toLowerCase();
+                    let v;
+                    try { v = decodeURIComponent(p.slice(eq + 1).replace(/\+/g, ' ')); }
+                    catch (_) { return; }
+                    if (k === 'amount') amount = parseFloat(v);
+                    else if (k === 'label') label = v;
+                    else if (k === 'message') message = v;
+                    else if (k === 'memo') memo = v;
+                });
+            }
+
+            const tsMatch = memo && memo.match(/ts:(\d{10})/);
+            if (tsMatch) {
+                const ts = parseInt(tsMatch[1], 10);
+                const now = Math.floor(Date.now() / 1000);
+                if (now - ts > REPLAY_STALE_SECONDS) return null;
+            }
+            return { recipient, amount, label, message, memo, raw: trimmed };
+        }
+
+        function isExpiredSolanaPayUri(str) {
+            if (!str || !str.trim().startsWith('solana:')) return false;
+            try {
+                const memoMatch = str.match(/memo=([^&]*)/i);
+                const memo = memoMatch ? decodeURIComponent(memoMatch[1].replace(/\+/g, ' ')) : null;
+                const tsMatch = memo && memo.match(/ts:(\d{10})/);
+                if (!tsMatch) return false;
+                const ts = parseInt(tsMatch[1], 10);
+                const now = Math.floor(Date.now() / 1000);
+                return (now - ts > REPLAY_STALE_SECONDS);
+            } catch (_) { return false; }
+        }
+
+        /* ── Payment display ───────────────────── */
+        function showPayment(parsed) {
+            currentUri = parsed.raw;
+            setNeedle(false);
+            setToggle(false);
+            setStatus('READY TO PAY', 'ready');
+
+            // Build pay summary
+            const ps = document.getElementById('paySummary');
+            ps.innerHTML = '';
+            if (parsed.label) {
+                const strong = document.createElement('strong');
+                strong.textContent = parsed.label;
+                ps.appendChild(strong);
+                ps.appendChild(document.createElement('br'));
+            }
+            if (parsed.amount != null) {
+                ps.appendChild(document.createTextNode(`${parsed.amount} SOL`));
+                ps.appendChild(document.createElement('br'));
+            }
+            const recip = parsed.recipient;
+            const short = recip.slice(0,4) + '…' + recip.slice(-4);
+            ps.appendChild(document.createTextNode(`Recipient: ${short}`));
+
+            const payHash = parsed.recipient.slice(0,6) + '...' + parsed.recipient.slice(-4);
+            setOutput('SOLANA PAY REQUEST', payHash, false);
+
+            document.getElementById('paySection').classList.add('visible');
+        }
+
+        function showError(msg) {
+            setStatus(msg.toUpperCase(), 'error');
+            setNeedle(false);
+            setToggle(false);
+        }
+
+        function openWallet() {
+            if (!currentUri) return;
+            window.location.href = currentUri;
+        }
+
+        function updateIdleUI() {
+            setStatus('TAP TO LISTEN', 'idle');
+            setNeedle(false);
+            setToggle(false);
+            setOutput(null, 'HOLD DEVICE NEAR SOUND', true);
+        }
+
+        function stopListening() {
+            if (!isListening) return;
+            isListening = false;
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+            }
+            if (audioContext) { audioContext.close(); }
+        }
+
+        function listenAgain() {
+            currentUri = null;
+            document.getElementById('paySection').classList.remove('visible');
+            startListening();
+        }
+
+        /* ── Main listen ────────────────────────── */
+        async function startListening() {
+            if (isListening) return;
+
+            try {
+                if (typeof ggwave_factory !== 'function') {
+                    throw new Error('ggwave failed to load — use HTTP server, not file://');
+                }
+                const ggwave = await ggwave_factory();
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: false, autoGainControl: false, noiseSuppression: false }
+                });
+
+                audioContext = new AudioContext();
+                const captureRate = audioContext.sampleRate;
+
+                const TARGET_RATE = 48000;
+                const parameters = ggwave.getDefaultParameters();
+                parameters.sampleRateInp = TARGET_RATE;
+                parameters.sampleRateOut = TARGET_RATE;
+                ggwaveInstance = ggwave.init(parameters);
+
+                const source = audioContext.createMediaStreamSource(mediaStream);
+
+                function resampleTo48k(samples, fromRate) {
+                    if (fromRate === TARGET_RATE) return samples;
+                    if (fromRate === 96000) {
+                        const out = new Float32Array(samples.length >>> 1);
+                        for (let i = 0; i < out.length; i++) out[i] = samples[i << 1];
+                        return out;
+                    }
+                    if (fromRate === 44100) {
+                        const outLen = Math.floor(samples.length * TARGET_RATE / fromRate);
+                        const out = new Float32Array(outLen);
+                        for (let i = 0; i < outLen; i++) {
+                            const srcIdx = i * fromRate / TARGET_RATE;
+                            const i0 = Math.floor(srcIdx);
+                            const i1 = Math.min(i0 + 1, samples.length - 1);
+                            const f = srcIdx - i0;
+                            out[i] = samples[i0] * (1 - f) + samples[i1] * f;
+                        }
+                        return out;
+                    }
+                    return samples;
+                }
+
+                function float32ToInt16Pcm(float32Array) {
+                    const int16 = new Int16Array(float32Array.length);
+                    for (let i = 0; i < float32Array.length; i++) {
+                        const s = Math.max(-1, Math.min(1, float32Array[i]));
+                        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    }
+                    return new Int8Array(int16.buffer);
+                }
+
+                const workletCode = `
+                    class SolanaPayProcessor extends AudioWorkletProcessor {
+                        process(inputs) {
+                            const input = inputs[0]?.[0];
+                            if (input?.length > 0) this.port.postMessage({ samples: new Float32Array(input) });
+                            return true;
+                        }
+                    }
+                    registerProcessor('solana-pay-processor', SolanaPayProcessor);
+                `;
+                const workletBlob = new Blob([workletCode], { type: 'application/javascript' });
+                const workletUrl = URL.createObjectURL(workletBlob);
+                await audioContext.audioWorklet.addModule(workletUrl);
+                URL.revokeObjectURL(workletUrl);
+
+                const processor = new AudioWorkletNode(audioContext, 'solana-pay-processor', {
+                    numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1]
+                });
+
+                let decodeAttempts = 0;
+                processor.port.onmessage = function(e) {
+                    const { samples } = e.data;
+                    if (!samples?.length) return;
+                    const resampled = resampleTo48k(samples, captureRate);
+                    const pcm = float32ToInt16Pcm(resampled);
+                    const result = ggwave.decode(ggwaveInstance, pcm);
+                    decodeAttempts++;
+                    if (decodeAttempts % 500 === 0) {
+                        console.log('[PayByEar] decode attempts:', decodeAttempts);
+                    }
+                    if (result && result.length > 0) {
+                        const text = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(result));
+                        console.log('[PayByEar] DECODED:', result.length, 'bytes →', JSON.stringify(text.slice(0, 100)));
+                        const parsed = parseSolanaPayUri(text);
+                        if (parsed) {
+                            showPayment(parsed);
+                            stopListening();
+                        } else if (isExpiredSolanaPayUri(text)) {
+                            showError('Payment expired — ask merchant to regenerate');
+                            stopListening();
+                        } else if (/^[\x20-\x7E\r\n\t]+$/.test(text) && text.length > 0) {
+                            setOutput('RECEIVED', text.slice(0, 32) + (text.length > 32 ? '…' : ''), false);
+                            setStatus('RECEIVED (NOT SOLANA PAY)', 'idle');
+                            setNeedle(false);
+                            setToggle(false);
+                        } else {
+                            console.log('[PayByEar] Filtered non-printable:', text.slice(0, 50));
+                        }
+                    }
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                isListening = true;
+                setStatus('LISTENING...', 'active');
+                setToggle(true);
+                setNeedle(true);
+                setOutput(null, 'HOLD DEVICE NEAR SOUND', true);
+
+            } catch (err) {
+                showError('Error: ' + err.message);
+            }
+        }
+    </script>
+</body>
+</html>

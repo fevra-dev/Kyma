@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network security config: blocks cleartext (HTTP) traffic by default.
+  Only HTTPS allowed. Play Integrity API uses Google's TLS endpoints.
+  Kyma is offline-first; this is defense-in-depth.
+  
+  Certificate pins for known domains (NTP fallback, future server-side APIs).
+  Pin expiration dates should be updated when server certificates rotate.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <!-- Google APIs: Play Integrity verification (future server-side) -->
+    <domain-config>
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <pin-set expiration="2027-01-01">
+            <pin digest="SHA-256">hxqRlPTu1bMS/0DITB1SSu0vd4u/8l8TjPgfaAp63Gc=</pin>
+        </pin-set>
+    </domain-config>
+    <!-- World Time API: NTP fallback over HTTPS -->
+    <domain-config>
+        <domain includeSubdomains="false">worldtimeapi.org</domain>
+        <pin-set expiration="2027-01-01">
+            <pin digest="SHA-256">jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=</pin>
+        </pin-set>
+    </domain-config>
+</network-security-config>

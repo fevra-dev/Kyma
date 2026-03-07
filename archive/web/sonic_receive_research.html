@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Allow eval for ggwave WASM (Emscripten); needed for local demo -->
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://cdn.jsdelivr.net;">
+    <title>SonicVault · Sonic Receive</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        h1 {
+            font-size: 1rem;
+            font-weight: 500;
+            letter-spacing: 0.12em;
+            color: #888;
+            margin-bottom: 2rem;
+        }
+        #status {
+            font-size: 0.875rem;
+            color: #4CAF50;
+            margin-bottom: 1rem;
+            min-height: 1.5em;
+        }
+        #status.error { color: #E53935; }
+        #status.listening {
+            color: #888;
+            background: linear-gradient(90deg, #888 0%, #888 35%, rgba(0,0,0,0.9) 50%, #888 65%, #888 100%);
+            background-size: 200% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: shimmer 1.2s linear infinite;
+        }
+        @keyframes shimmer {
+            0% { background-position: 100% 0; }
+            100% { background-position: -100% 0; }
+        }
+        #output {
+            font-size: 0.8125rem;
+            color: #666;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-width: 420px;
+            transition: opacity 0.25s ease-out;
+        }
+        #output.received {
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 1rem 1.25rem;
+            text-align: left;
+            color: #e0e0e0;
+            font-size: 0.875rem;
+            animation: fadeIn 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        #output.received.error { color: #E53935; }
+        #passphraseRow {
+            display: none;
+            width: 100%;
+            max-width: 420px;
+            margin-top: 1rem;
+        }
+        #passphraseRow.visible { display: block; animation: fadeIn 0.3s ease-out; }
+        #passphraseInput {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: #111;
+            border: 1px solid #333;
+            color: #e0e0e0;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.875rem;
+        }
+        button {
+            margin-top: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            font-family: inherit;
+            font-size: 0.875rem;
+            letter-spacing: 0.08em;
+            background: transparent;
+            color: #e0e0e0;
+            border: 1px solid #555;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            max-width: 420px;
+        }
+        button:hover { border-color: #4CAF50; color: #4CAF50; }
+        button:focus-visible { outline: 2px solid #4CAF50; outline-offset: 2px; }
+        .ring {
+            width: 64px;
+            height: 64px;
+            border: 2px solid #4CAF50;
+            border-radius: 50%;
+            margin-bottom: 1.5rem;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        .ring.inactive { animation: none; border-color: #333; }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 0.4; }
+            100% { transform: scale(1); opacity: 0.8; }
+        }
+    </style>
+</head>
+<body>
+    <h1>SONIC RECEIVE</h1>
+    <div id="ring" class="ring inactive"></div>
+    <div id="status">Tap to listen</div>
+    <div id="output">Hold device near sound. Audible.</div>
+    <div id="passphraseRow">
+        <input type="text" id="passphraseInput" placeholder="Session code" autocomplete="off">
+        <button onclick="tryDecrypt()" style="margin-top:0.5rem;">DECRYPT</button>
+    </div>
+    <button id="listenBtn" onclick="startListening()">LISTEN</button>
+    <button id="stopBtn" style="display:none;" onclick="stopListening(); updateListenUI();">STOP</button>
+
+    <script src="reed_solomon.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ggwave@0.4.0/ggwave.js"></script>
+    <script>
+        let isListening = false;
+        let audioContext;
+        let ggwaveInstance;
+        let mediaStream = null;
+        let pendingEncrypted = null;
+
+        const MAGIC_SVDD = new Uint8Array([0x53, 0x56, 0x44, 0x44]);
+
+        function isSvddPacket(data) {
+            if (data.length < 4) return false;
+            return data[0] === 0x53 && data[1] === 0x56 && data[2] === 0x44 && data[3] === 0x44;
+        }
+
+        async function decryptWithPassphrase(encrypted, passphrase) {
+            const enc = new TextEncoder().encode(passphrase);
+            const hash = await crypto.subtle.digest('SHA-256', enc);
+            const key = await crypto.subtle.importKey('raw', hash, { name: 'AES-GCM' }, false, ['decrypt']);
+            const iv = encrypted.slice(4, 16);
+            const ciphertext = encrypted.slice(16);
+            const decrypted = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv, tagLength: 128 },
+                key,
+                ciphertext
+            );
+            return new Uint8Array(decrypted);
+        }
+
+        function stopListening() {
+            if (!isListening) return;
+            isListening = false;
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+            }
+            if (audioContext) audioContext.close();
+        }
+
+        function updateListenUI() {
+            pendingEncrypted = null;
+            document.getElementById('status').textContent = 'Tap to listen';
+            document.getElementById('status').className = '';
+            document.getElementById('ring').className = 'ring inactive';
+            document.getElementById('output').textContent = 'Hold device near sound. Audible.';
+            document.getElementById('output').className = '';
+            document.getElementById('passphraseRow').classList.remove('visible');
+            document.getElementById('listenBtn').style.display = 'block';
+            document.getElementById('stopBtn').style.display = 'none';
+        }
+
+        function showPayload(outputEl, text, isError) {
+            outputEl.textContent = text;
+            outputEl.classList.remove('error');
+            outputEl.classList.add('received');
+            if (isError) outputEl.classList.add('error');
+        }
+
+        async function tryDecrypt() {
+            const input = document.getElementById('passphraseInput');
+            const output = document.getElementById('output');
+            const status = document.getElementById('status');
+            const row = document.getElementById('passphraseRow');
+            if (!pendingEncrypted || !input.value.trim()) return;
+            try {
+                const plain = await decryptWithPassphrase(pendingEncrypted, input.value.trim());
+                const text = new TextDecoder('utf-8', { fatal: false }).decode(plain);
+                showPayload(output, text, false);
+                status.textContent = 'Decrypted';
+                status.className = '';
+                row.classList.remove('visible');
+                pendingEncrypted = null;
+            } catch (e) {
+                showPayload(output, 'Wrong session code.', true);
+                status.className = 'error';
+            }
+        }
+
+        async function startListening() {
+            if (isListening) return;
+
+            const status = document.getElementById('status');
+            const ring = document.getElementById('ring');
+            const output = document.getElementById('output');
+
+            try {
+                if (typeof ggwave_factory !== 'function') {
+                    throw new Error('ggwave failed to load. Check console for script errors.');
+                }
+                const ggwave = await ggwave_factory();
+
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        autoGainControl: false,
+                        noiseSuppression: false
+                    }
+                });
+
+                /* Use default sample rate to match mic (Firefox errors on mismatch) */
+                audioContext = new AudioContext();
+                const captureRate = audioContext.sampleRate;
+                console.log('[SonicReceive] Capture rate:', captureRate, '→ resampling to 48 kHz for ggwave');
+
+                const TARGET_RATE = 48000;
+                const parameters = ggwave.getDefaultParameters();
+                parameters.sampleRateInp = TARGET_RATE;
+                parameters.sampleRateOut = TARGET_RATE;
+                ggwaveInstance = ggwave.init(parameters);
+
+                const source = audioContext.createMediaStreamSource(mediaStream);
+
+                function resampleTo48k(samples, fromRate) {
+                    if (fromRate === TARGET_RATE) return samples;
+                    if (fromRate === 96000) {
+                        const out = new Float32Array(samples.length >>> 1);
+                        for (let i = 0; i < out.length; i++) out[i] = samples[i << 1];
+                        return out;
+                    }
+                    if (fromRate === 44100) {
+                        const outLen = Math.floor(samples.length * TARGET_RATE / fromRate);
+                        const out = new Float32Array(outLen);
+                        for (let i = 0; i < outLen; i++) {
+                            const srcIdx = i * fromRate / TARGET_RATE;
+                            const i0 = Math.floor(srcIdx);
+                            const i1 = Math.min(i0 + 1, samples.length - 1);
+                            const f = srcIdx - i0;
+                            out[i] = samples[i0] * (1 - f) + samples[i1] * f;
+                        }
+                        return out;
+                    }
+                    return samples;
+                }
+
+                function float32ToInt16Pcm(float32Array) {
+                    const int16 = new Int16Array(float32Array.length);
+                    for (let i = 0; i < float32Array.length; i++) {
+                        const s = Math.max(-1, Math.min(1, float32Array[i]));
+                        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    }
+                    return new Int8Array(int16.buffer);
+                }
+
+                const workletCode = `
+                    class SonicReceiveProcessor extends AudioWorkletProcessor {
+                        process(inputs, outputs) {
+                            const input = inputs[0]?.[0];
+                            if (input?.length > 0) {
+                                this.port.postMessage({ samples: new Float32Array(input) });
+                            }
+                            return true;
+                        }
+                    }
+                    registerProcessor('sonic-receive-processor', SonicReceiveProcessor);
+                `;
+                const workletBlob = new Blob([workletCode], { type: 'application/javascript' });
+                const workletUrl = URL.createObjectURL(workletBlob);
+                await audioContext.audioWorklet.addModule(workletUrl);
+                URL.revokeObjectURL(workletUrl);
+
+                let decodeCount = 0;
+                const processor = new AudioWorkletNode(audioContext, 'sonic-receive-processor', {
+                    numberOfInputs: 1,
+                    numberOfOutputs: 1,
+                    outputChannelCount: [1]
+                });
+
+                processor.port.onmessage = function(e) {
+                    const { samples } = e.data;
+                    if (!samples?.length) return;
+                    const resampled = resampleTo48k(samples, captureRate);
+                    const pcm = float32ToInt16Pcm(resampled);
+                    const result = ggwave.decode(ggwaveInstance, pcm);
+                    decodeCount++;
+                    if (decodeCount % 100 === 0) {
+                        console.log('[SonicReceive] decode #' + decodeCount + ': result=' + (result?.length ?? 'null'));
+                    }
+                    if (result && result.length > 0) {
+                        console.log('[SonicReceive] decode OK: length=' + result.length);
+                        const bytes = new Uint8Array(result);
+                        const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+                        const isReadable = /^[\x20-\x7E\r\n\t]*$/.test(text) && text.length > 0 && !/�/.test(text);
+
+                        if (isReadable) {
+                            showPayload(output, text, false);
+                            status.textContent = 'Received';
+                            status.className = '';
+                            ring.className = 'ring inactive';
+                            document.getElementById('listenBtn').style.display = 'block';
+                            document.getElementById('stopBtn').style.display = 'none';
+                            return;
+                        }
+
+                        const rsDecoded = ReedSolomonDecoder.decode(bytes);
+                        if (rsDecoded) {
+                            if (isSvddPacket(rsDecoded)) {
+                                pendingEncrypted = rsDecoded;
+                                document.getElementById('passphraseRow').classList.add('visible');
+                                showPayload(output, 'Encrypted. Enter session code.', false);
+                                status.textContent = 'Session code required';
+                                status.className = '';
+                                ring.className = 'ring inactive';
+                            } else {
+                                showPayload(output, 'ECDH encrypted — use SonicVault app.', false);
+                                status.textContent = 'App-only';
+                                status.className = '';
+                                ring.className = 'ring inactive';
+                            }
+                            document.getElementById('listenBtn').style.display = 'block';
+                            document.getElementById('stopBtn').style.display = 'none';
+                        } else {
+                            const hex = Array.from(bytes.slice(0, 64)).map(b => b.toString(16).padStart(2, '0')).join(' ') + (bytes.length > 64 ? '…' : '');
+                            showPayload(output, bytes.length + ' bytes: ' + hex, false);
+                            status.textContent = 'Received';
+                            status.className = '';
+                            ring.className = 'ring inactive';
+                            document.getElementById('listenBtn').style.display = 'block';
+                            document.getElementById('stopBtn').style.display = 'none';
+                        }
+                    }
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                isListening = true;
+                status.textContent = 'Listening…';
+                status.className = 'listening';
+                ring.className = 'ring';
+                document.getElementById('listenBtn').style.display = 'none';
+                document.getElementById('stopBtn').style.display = 'block';
+
+            } catch (err) {
+                status.textContent = 'Error: ' + err.message;
+                status.className = 'error';
+                ring.className = 'ring inactive';
+            }
+        }
+    </script>
+</body>
+</html>

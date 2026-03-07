@@ -1,0 +1,389 @@
+package com.sonicvault.app.data.solana
+
+import com.sonicvault.app.BuildConfig
+import com.sonicvault.app.logging.SonicVaultLogger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
+
+/**
+ * Solana JSON-RPC client backed by Helius for reliable devnet/mainnet access.
+ *
+ * - RPC queries (blockhash, nonce, accounts) go through Helius RPC endpoint.
+ * - Transaction submission uses Helius Sender for dual-routing (validators + Jito).
+ * - Priority fee estimation via Helius getPriorityFeeEstimate API.
+ */
+class SolanaRpcClient(
+    private val rpcUrl: String = buildHeliusRpcUrl(),
+    private val senderUrl: String = HELIUS_SENDER_URL,
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
+        .build()
+) {
+
+    private val blockhashRetryCount = 3
+    private val blockhashRetryDelayMs = 1500L
+
+    /**
+     * Fetches the latest blockhash from the cluster.
+     * Retries up to [blockhashRetryCount] times with exponential backoff.
+     *
+     * @return Pair of (blockhash, lastValidBlockHeight) or null on failure
+     */
+    suspend fun getLatestBlockhash(): BlockhashResult? = withContext(Dispatchers.IO) {
+        repeat(blockhashRetryCount) { attempt ->
+            try {
+                val body = JSONObject().apply {
+                    put("jsonrpc", "2.0")
+                    put("id", 1)
+                    put("method", "getLatestBlockhash")
+                    put("params", org.json.JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("commitment", "processed")
+                        })
+                    })
+                }.toString()
+
+                val request = Request.Builder()
+                    .url(rpcUrl)
+                    .post(body.toRequestBody(JSON_MEDIA))
+                    .addHeader("Content-Type", "application/json")
+                    .build()
+
+                val response = client.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    SonicVaultLogger.w("[SolanaRpc] getLatestBlockhash attempt ${attempt + 1}: ${response.code}")
+                    if (attempt < blockhashRetryCount - 1) delay(blockhashRetryDelayMs)
+                    return@repeat
+                }
+
+                val json = JSONObject(response.body?.string() ?: "{}")
+                if (json.has("error")) {
+                    SonicVaultLogger.w("[SolanaRpc] getLatestBlockhash error: ${json.optJSONObject("error")}")
+                    if (attempt < blockhashRetryCount - 1) delay(blockhashRetryDelayMs)
+                    return@repeat
+                }
+
+                val result = json.optJSONObject("result")?.optJSONObject("value")
+                    ?: run {
+                        if (attempt < blockhashRetryCount - 1) delay(blockhashRetryDelayMs)
+                        return@repeat
+                    }
+
+                val blockhash = result.optString("blockhash")
+                val lastValidBlockHeight = result.optLong("lastValidBlockHeight", 0L)
+
+                if (blockhash.isBlank()) {
+                    if (attempt < blockhashRetryCount - 1) delay(blockhashRetryDelayMs)
+                    return@repeat
+                }
+
+                SonicVaultLogger.d("[SolanaRpc] blockhash=$blockhash lastValid=$lastValidBlockHeight")
+                return@withContext BlockhashResult(blockhash, lastValidBlockHeight)
+            } catch (e: Exception) {
+                SonicVaultLogger.e("[SolanaRpc] getLatestBlockhash attempt ${attempt + 1} failed", e)
+                if (attempt < blockhashRetryCount - 1) delay(blockhashRetryDelayMs)
+            }
+        }
+        null
+    }
+
+    /**
+     * Submits a signed transaction via Helius Sender for higher landing rates.
+     * Helius Sender dual-routes through validators + Jito, free on all plans.
+     * Falls back to standard RPC sendTransaction if Sender fails.
+     *
+     * @param signedTransactionBase64 base64-encoded serialized signed transaction
+     * @return transaction signature (base58) or null on failure
+     */
+    suspend fun sendTransaction(signedTransactionBase64: String): String? = withContext(Dispatchers.IO) {
+        // Try Helius Sender first (dual-routing, higher landing rates)
+        val senderResult = trySendViaSender(signedTransactionBase64)
+        if (senderResult != null) return@withContext senderResult
+
+        // Fallback to standard RPC
+        trySendViaRpc(signedTransactionBase64)
+    }
+
+    /** Helius Sender: POST base64 TX to sender endpoint. */
+    private fun trySendViaSender(signedTxBase64: String): String? {
+        try {
+            val params = org.json.JSONArray().put(signedTxBase64)
+            val options = JSONObject().apply {
+                put("encoding", "base64")
+                put("skipPreflight", true)
+                put("maxRetries", 0)
+            }
+            params.put(options)
+
+            val body = JSONObject().apply {
+                put("jsonrpc", "2.0")
+                put("id", 2)
+                put("method", "sendTransaction")
+                put("params", params)
+            }.toString()
+
+            val request = Request.Builder()
+                .url(senderUrl)
+                .post(body.toRequestBody(JSON_MEDIA))
+                .addHeader("Content-Type", "application/json")
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                SonicVaultLogger.w("[SolanaRpc] Helius Sender failed: ${response.code}, falling back to RPC")
+                return null
+            }
+
+            val json = JSONObject(response.body?.string() ?: "{}")
+            if (json.has("error")) {
+                SonicVaultLogger.w("[SolanaRpc] Helius Sender error: ${json.optJSONObject("error")?.optString("message")}")
+                return null
+            }
+
+            val signature = json.optString("result", "")
+            if (signature.isBlank()) return null
+
+            SonicVaultLogger.i("[SolanaRpc] tx sent via Helius Sender: $signature")
+            return signature
+        } catch (e: Exception) {
+            SonicVaultLogger.w("[SolanaRpc] Helius Sender exception, falling back", e)
+            return null
+        }
+    }
+
+    /** Standard RPC sendTransaction fallback. */
+    private fun trySendViaRpc(signedTxBase64: String): String? {
+        return try {
+            val params = org.json.JSONArray().put(signedTxBase64)
+            val options = JSONObject().apply {
+                put("encoding", "base64")
+                put("skipPreflight", false)
+            }
+            params.put(options)
+
+            val body = JSONObject().apply {
+                put("jsonrpc", "2.0")
+                put("id", 2)
+                put("method", "sendTransaction")
+                put("params", params)
+            }.toString()
+
+            val request = Request.Builder()
+                .url(rpcUrl)
+                .post(body.toRequestBody(JSON_MEDIA))
+                .addHeader("Content-Type", "application/json")
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                SonicVaultLogger.w("[SolanaRpc] sendTransaction failed: ${response.code}")
+                return null
+            }
+
+            val json = JSONObject(response.body?.string() ?: "{}")
+            if (json.has("error")) {
+                val err = json.optJSONObject("error")
+                SonicVaultLogger.w("[SolanaRpc] sendTransaction error: ${err?.optString("message")}")
+                return null
+            }
+
+            val signature = json.optString("result", "")
+            if (signature.isBlank()) return null
+
+            SonicVaultLogger.i("[SolanaRpc] tx sent via RPC: $signature")
+            signature
+        } catch (e: Exception) {
+            SonicVaultLogger.e("[SolanaRpc] sendTransaction failed", e)
+            null
+        }
+    }
+
+    /**
+     * Estimates optimal priority fee using Helius getPriorityFeeEstimate API.
+     * Returns recommended fee in microlamports, or a safe default on failure.
+     *
+     * @param accountKeys list of account pubkeys involved in the transaction
+     * @return priority fee in microlamports
+     */
+    suspend fun getPriorityFeeEstimate(accountKeys: List<String> = emptyList()): Long = withContext(Dispatchers.IO) {
+        try {
+            val params = org.json.JSONArray().apply {
+                put(JSONObject().apply {
+                    if (accountKeys.isNotEmpty()) {
+                        put("accountKeys", org.json.JSONArray(accountKeys))
+                    }
+                    put("options", JSONObject().apply {
+                        put("priorityLevel", "Medium")
+                    })
+                })
+            }
+
+            val body = JSONObject().apply {
+                put("jsonrpc", "2.0")
+                put("id", 6)
+                put("method", "getPriorityFeeEstimate")
+                put("params", params)
+            }.toString()
+
+            val request = Request.Builder()
+                .url(rpcUrl)
+                .post(body.toRequestBody(JSON_MEDIA))
+                .addHeader("Content-Type", "application/json")
+                .build()
+
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                SonicVaultLogger.w("[SolanaRpc] getPriorityFeeEstimate failed: ${response.code}")
+                return@withContext DEFAULT_PRIORITY_FEE
+            }
+
+            val json = JSONObject(response.body?.string() ?: "{}")
+            if (json.has("error")) {
+                SonicVaultLogger.w("[SolanaRpc] getPriorityFeeEstimate error: ${json.optJSONObject("error")}")
+                return@withContext DEFAULT_PRIORITY_FEE
+            }
+
+            val fee = json.optJSONObject("result")?.optLong("priorityFeeEstimate", DEFAULT_PRIORITY_FEE)
+                ?: DEFAULT_PRIORITY_FEE
+
+            SonicVaultLogger.d("[SolanaRpc] priority fee estimate: $fee microlamports")
+            fee
+        } catch (e: Exception) {
+            SonicVaultLogger.w("[SolanaRpc] getPriorityFeeEstimate failed, using default", e)
+            DEFAULT_PRIORITY_FEE
+        }
+    }
+
+    /**
+     * Fetches the current nonce value from a nonce account.
+     *
+     * @param nonceAccountPubkey base58 pubkey of the nonce account
+     * @return current nonce value (base58) or null on failure
+     */
+    suspend fun getNonce(nonceAccountPubkey: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val params = org.json.JSONArray().put(nonceAccountPubkey)
+            val body = JSONObject().apply {
+                put("jsonrpc", "2.0")
+                put("id", 3)
+                put("method", "getAccountInfo")
+                put("params", params)
+            }.toString()
+            val request = Request.Builder()
+                .url(rpcUrl)
+                .post(body.toRequestBody(JSON_MEDIA))
+                .addHeader("Content-Type", "application/json")
+                .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) return@withContext null
+            val json = JSONObject(response.body?.string() ?: "{}")
+            if (json.has("error")) return@withContext null
+            val value = json.optJSONObject("result")?.optJSONObject("value") ?: return@withContext null
+            val data = value.optJSONArray("data") ?: return@withContext null
+            val decoded = android.util.Base64.decode(data.optString(0), android.util.Base64.DEFAULT)
+            if (decoded.size < 72) return@withContext null
+            val nonceBytes = decoded.copyOfRange(40, 72)
+            io.github.novacrypto.base58.Base58.base58Encode(nonceBytes)
+        } catch (e: Exception) {
+            SonicVaultLogger.e("[SolanaRpc] getNonce failed", e)
+            null
+        }
+    }
+
+    /**
+     * Minimum lamports for rent exemption of [dataLength] bytes.
+     */
+    suspend fun getMinimumBalanceForRentExemption(dataLength: Long): Long = withContext(Dispatchers.IO) {
+        try {
+            val params = org.json.JSONArray().put(dataLength.toInt())
+            val body = JSONObject().apply {
+                put("jsonrpc", "2.0")
+                put("id", 4)
+                put("method", "getMinimumBalanceForRentExemption")
+                put("params", params)
+            }.toString()
+            val request = Request.Builder()
+                .url(rpcUrl)
+                .post(body.toRequestBody(JSON_MEDIA))
+                .addHeader("Content-Type", "application/json")
+                .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) return@withContext 0L
+            val json = JSONObject(response.body?.string() ?: "{}")
+            if (json.has("error")) return@withContext 0L
+            json.optLong("result", 0L)
+        } catch (e: Exception) {
+            SonicVaultLogger.e("[SolanaRpc] getMinimumBalanceForRentExemption failed", e)
+            0L
+        }
+    }
+
+    /**
+     * Returns account pubkeys for a program matching the given filters.
+     * Uses commitment "confirmed" so newly created accounts are visible.
+     */
+    suspend fun getProgramAccounts(programId: String, filters: String): List<String> = withContext(Dispatchers.IO) {
+        try {
+            val config = JSONObject().apply {
+                put("encoding", "base64")
+                put("commitment", "confirmed")
+                put("filters", org.json.JSONArray(filters))
+            }
+            val params = org.json.JSONArray().put(programId).put(config)
+            val body = JSONObject().apply {
+                put("jsonrpc", "2.0")
+                put("id", 5)
+                put("method", "getProgramAccounts")
+                put("params", params)
+            }.toString()
+            val request = Request.Builder()
+                .url(rpcUrl)
+                .post(body.toRequestBody(JSON_MEDIA))
+                .addHeader("Content-Type", "application/json")
+                .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) return@withContext emptyList()
+            val json = JSONObject(response.body?.string() ?: "{}")
+            if (json.has("error")) return@withContext emptyList()
+            val result = json.optJSONArray("result") ?: return@withContext emptyList()
+            (0 until result.length()).mapNotNull { result.optJSONObject(it)?.optString("pubkey") }
+        } catch (e: Exception) {
+            SonicVaultLogger.e("[SolanaRpc] getProgramAccounts failed", e)
+            emptyList()
+        }
+    }
+
+    data class BlockhashResult(
+        val blockhash: String,
+        val lastValidBlockHeight: Long
+    )
+
+    companion object {
+        /** Safe fallback priority fee (1000 microlamports) when Helius estimate unavailable. */
+        private const val DEFAULT_PRIORITY_FEE = 1000L
+
+        /** Helius Sender: dual-routes through validators + Jito, free on all plans. */
+        const val HELIUS_SENDER_URL = "https://sender.helius-rpc.com/fast"
+
+        private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
+
+        /** Builds Helius RPC URL from BuildConfig API key, falls back to public devnet. */
+        fun buildHeliusRpcUrl(): String {
+            val key = BuildConfig.HELIUS_API_KEY
+            return if (key.isNotBlank()) {
+                "https://devnet.helius-rpc.com/?api-key=$key"
+            } else {
+                "https://api.devnet.solana.com"
+            }
+        }
+    }
+}

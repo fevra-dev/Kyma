@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Allow eval for ggwave WASM (Emscripten); needed for local demo -->
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://cdn.jsdelivr.net;">
+    <title>SonicVault · Pay by Ear</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #0a0a0a;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        h1 {
+            font-size: 1rem;
+            font-weight: 500;
+            letter-spacing: 0.12em;
+            color: #888;
+            margin-bottom: 2rem;
+        }
+        #status {
+            font-size: 0.875rem;
+            color: #4CAF50;
+            margin-bottom: 1rem;
+            min-height: 1.5em;
+        }
+        #status.error { color: #E53935; }
+        #status.listening {
+            color: #888;
+            background: linear-gradient(90deg, #888 0%, #888 35%, rgba(0,0,0,0.9) 50%, #888 65%, #888 100%);
+            background-size: 200% 100%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: shimmer 1.2s linear infinite;
+        }
+        @keyframes shimmer {
+            0% { background-position: 100% 0; }
+            100% { background-position: -100% 0; }
+        }
+        #output {
+            font-size: 0.8125rem;
+            color: #666;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-width: 420px;
+        }
+        #paySection {
+            display: none;
+            width: 100%;
+            max-width: 420px;
+            margin-top: 1.5rem;
+        }
+        #paySection.visible { display: block; animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .paySummary {
+            font-size: 0.875rem;
+            color: #888;
+            margin-bottom: 1rem;
+        }
+        .paySummary strong { color: #e0e0e0; }
+        button {
+            margin-top: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            font-family: inherit;
+            font-size: 0.875rem;
+            letter-spacing: 0.08em;
+            background: transparent;
+            color: #e0e0e0;
+            border: 1px solid #555;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            max-width: 420px;
+        }
+        button:hover { border-color: #4CAF50; color: #4CAF50; }
+        button:focus-visible { outline: 2px solid #4CAF50; outline-offset: 2px; }
+        button.primary {
+            background: #4CAF50;
+            color: #0a0a0a;
+            border-color: #4CAF50;
+        }
+        button.primary:hover { opacity: 0.9; }
+        .ring {
+            width: 64px;
+            height: 64px;
+            border: 2px solid #4CAF50;
+            border-radius: 50%;
+            margin-bottom: 1.5rem;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        .ring.inactive { animation: none; border-color: #333; }
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 0.4; }
+            100% { transform: scale(1); opacity: 0.8; }
+        }
+    </style>
+</head>
+<body>
+    <h1>PAY BY EAR</h1>
+    <div id="ring" class="ring inactive"></div>
+    <div id="status">Tap to listen</div>
+    <div id="output">Hold device near sound. Audible.</div>
+    <div id="paySection">
+        <div class="paySummary" id="paySummary"></div>
+        <button id="payBtn" class="primary" onclick="openWallet()">PAY</button>
+        <button onclick="listenAgain()" style="margin-top:0.5rem;">LISTEN AGAIN</button>
+    </div>
+    <button id="listenBtn" onclick="startListening()">LISTEN</button>
+    <button id="stopBtn" style="display:none;" onclick="stopListening(); updateListenUI();">STOP</button>
+
+    <script src="https://cdn.jsdelivr.net/npm/ggwave@0.4.0/ggwave.js"></script>
+    <script>
+        let isListening = false;
+        let audioContext;
+        let ggwaveInstance;
+        let mediaStream = null;
+        let currentUri = null;
+
+        const REPLAY_STALE_SECONDS = 60;
+        const BASE58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+
+        function isValidBase58(s) {
+            if (!s || s.length < 32 || s.length > 44) return false;
+            return [...s].every(c => BASE58.includes(c));
+        }
+
+        function parseSolanaPayUri(str) {
+            const trimmed = str.trim();
+            if (!trimmed.startsWith('solana:')) return null;
+            const withoutScheme = trimmed.slice(7);
+            const qIdx = withoutScheme.indexOf('?');
+            const recipient = (qIdx === -1 ? withoutScheme : withoutScheme.slice(0, qIdx)).trim();
+            if (!recipient || !isValidBase58(recipient)) return null;
+
+            let amount = null, label = null, message = null, memo = null;
+
+            if (qIdx >= 0) {
+                const query = withoutScheme.slice(qIdx + 1);
+                query.split('&').forEach(p => {
+                    const eq = p.indexOf('=');
+                    if (eq < 0) return;
+                    const k = p.slice(0, eq).toLowerCase();
+                    let v;
+                    try {
+                        v = decodeURIComponent(p.slice(eq + 1).replace(/\+/g, ' '));
+                    } catch (_) { return; }
+                    if (k === 'amount') amount = parseFloat(v);
+                    else if (k === 'label') label = v;
+                    else if (k === 'message') message = v;
+                    else if (k === 'memo') memo = v;
+                });
+            }
+
+            const tsMatch = memo && memo.match(/ts:(\d{10})/);
+            if (tsMatch) {
+                const ts = parseInt(tsMatch[1], 10);
+                const now = Math.floor(Date.now() / 1000);
+                if (now - ts > REPLAY_STALE_SECONDS) return null;
+            }
+
+            return { recipient, amount, label, message, memo, raw: trimmed };
+        }
+
+        function isExpiredSolanaPayUri(str) {
+            if (!str || !str.trim().startsWith('solana:')) return false;
+            try {
+                const memoMatch = str.match(/memo=([^&]*)/i);
+                const memo = memoMatch ? decodeURIComponent(memoMatch[1].replace(/\+/g, ' ')) : null;
+                const tsMatch = memo && memo.match(/ts:(\d{10})/);
+                if (!tsMatch) return false;
+                const ts = parseInt(tsMatch[1], 10);
+                const now = Math.floor(Date.now() / 1000);
+                return (now - ts) > REPLAY_STALE_SECONDS;
+            } catch (_) { return false; }
+        }
+
+        function showError(msg) {
+            document.getElementById('output').textContent = msg;
+            document.getElementById('output').className = 'error';
+            document.getElementById('status').textContent = 'Error';
+            document.getElementById('status').className = 'error';
+            document.getElementById('ring').className = 'ring inactive';
+            document.getElementById('paySection').classList.remove('visible');
+            document.getElementById('listenBtn').style.display = 'block';
+            document.getElementById('stopBtn').style.display = 'none';
+        }
+
+        function showPayment(parsed) {
+            currentUri = parsed.raw;
+            const output = document.getElementById('output');
+            const paySection = document.getElementById('paySection');
+            const paySummary = document.getElementById('paySummary');
+            const listenBtn = document.getElementById('listenBtn');
+
+            const amountStr = parsed.amount != null ? `${parsed.amount} SOL` : 'Amount';
+            const labelStr = parsed.label || 'Merchant';
+            const recipientShort = parsed.recipient.slice(0, 8) + '…' + parsed.recipient.slice(-4);
+
+            paySummary.innerHTML = '';
+            paySummary.appendChild(document.createTextNode(`Pay ${amountStr} to `));
+            const strong = document.createElement('strong');
+            strong.textContent = labelStr;
+            paySummary.appendChild(strong);
+            paySummary.appendChild(document.createTextNode(`\nRecipient: ${recipientShort}`));
+
+            output.textContent = 'Received.';
+            document.getElementById('status').textContent = 'Ready to pay';
+            document.getElementById('status').className = '';
+            document.getElementById('ring').className = 'ring inactive';
+            paySection.classList.add('visible');
+            document.getElementById('listenBtn').style.display = 'none';
+            document.getElementById('stopBtn').style.display = 'none';
+        }
+
+        function openWallet() {
+            if (!currentUri) return;
+            window.location.href = currentUri;
+        }
+
+        function stopListening() {
+            if (!isListening) return;
+            isListening = false;
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+        }
+
+        function updateListenUI() {
+            document.getElementById('status').textContent = 'Tap to listen';
+            document.getElementById('status').className = '';
+            document.getElementById('ring').className = 'ring inactive';
+            document.getElementById('output').textContent = 'Hold device near sound. Audible.';
+            document.getElementById('listenBtn').style.display = 'block';
+            document.getElementById('stopBtn').style.display = 'none';
+        }
+
+        function listenAgain() {
+            currentUri = null;
+            document.getElementById('paySection').classList.remove('visible');
+            document.getElementById('output').textContent = 'Hold device near sound. Audible.';
+            startListening();
+        }
+
+        async function startListening() {
+            if (isListening) return;
+
+            const status = document.getElementById('status');
+            const ring = document.getElementById('ring');
+            const output = document.getElementById('output');
+
+            try {
+                if (typeof ggwave_factory !== 'function') {
+                    throw new Error('ggwave failed to load.');
+                }
+                const ggwave = await ggwave_factory();
+
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    audio: { echoCancellation: false, autoGainControl: false, noiseSuppression: false }
+                });
+
+                /* Use default sample rate to match mic (Firefox errors on mismatch) */
+                audioContext = new AudioContext();
+                const captureRate = audioContext.sampleRate;
+                console.log('[PayByEar] Capture rate:', captureRate, '→ resampling to 48 kHz for ggwave');
+
+                /* ggwave expects 48 kHz; resample if capture differs (e.g. 96k on some Macs) */
+                const TARGET_RATE = 48000;
+                const parameters = ggwave.getDefaultParameters();
+                parameters.sampleRateInp = TARGET_RATE;
+                parameters.sampleRateOut = TARGET_RATE;
+                ggwaveInstance = ggwave.init(parameters);
+
+                const source = audioContext.createMediaStreamSource(mediaStream);
+
+                function resampleTo48k(samples, fromRate) {
+                    if (fromRate === TARGET_RATE) return samples;
+                    if (fromRate === 96000) {
+                        const out = new Float32Array(samples.length >>> 1);
+                        for (let i = 0; i < out.length; i++) out[i] = samples[i << 1];
+                        return out;
+                    }
+                    if (fromRate === 44100) {
+                        const outLen = Math.floor(samples.length * TARGET_RATE / fromRate);
+                        const out = new Float32Array(outLen);
+                        for (let i = 0; i < outLen; i++) {
+                            const srcIdx = i * fromRate / TARGET_RATE;
+                            const i0 = Math.floor(srcIdx);
+                            const i1 = Math.min(i0 + 1, samples.length - 1);
+                            const f = srcIdx - i0;
+                            out[i] = samples[i0] * (1 - f) + samples[i1] * f;
+                        }
+                        return out;
+                    }
+                    return samples;
+                }
+
+                function float32ToInt16Pcm(float32Array) {
+                    const int16 = new Int16Array(float32Array.length);
+                    for (let i = 0; i < float32Array.length; i++) {
+                        const s = Math.max(-1, Math.min(1, float32Array[i]));
+                        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    }
+                    return new Int8Array(int16.buffer);
+                }
+
+                const workletCode = `
+                    class SolanaPayProcessor extends AudioWorkletProcessor {
+                        process(inputs, outputs) {
+                            const input = inputs[0]?.[0];
+                            if (input?.length > 0) {
+                                this.port.postMessage({ samples: new Float32Array(input) });
+                            }
+                            return true;
+                        }
+                    }
+                    registerProcessor('solana-pay-processor', SolanaPayProcessor);
+                `;
+                const workletBlob = new Blob([workletCode], { type: 'application/javascript' });
+                const workletUrl = URL.createObjectURL(workletBlob);
+                await audioContext.audioWorklet.addModule(workletUrl);
+                URL.revokeObjectURL(workletUrl);
+
+                const processor = new AudioWorkletNode(audioContext, 'solana-pay-processor', {
+                    numberOfInputs: 1,
+                    numberOfOutputs: 1,
+                    outputChannelCount: [1]
+                });
+
+                let decodeAttempts = 0;
+                processor.port.onmessage = function(e) {
+                    const { samples } = e.data;
+                    if (!samples?.length) return;
+                    const resampled = resampleTo48k(samples, captureRate);
+                    const pcm = float32ToInt16Pcm(resampled);
+                    const result = ggwave.decode(ggwaveInstance, pcm);
+                    decodeAttempts++;
+                    if (decodeAttempts % 500 === 0) {
+                        console.log('[PayByEar] decode attempts:', decodeAttempts, 'samples/chunk:', resampled.length);
+                    }
+                    if (result && result.length > 0) {
+                        const text = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(result));
+                        console.log('[PayByEar] DECODED:', result.length, 'bytes, text:', JSON.stringify(text.slice(0, 100)));
+                        const parsed = parseSolanaPayUri(text);
+                        if (parsed) {
+                            showPayment(parsed);
+                            stopListening();
+                        } else if (isExpiredSolanaPayUri(text)) {
+                            showError('Payment request expired. Ask merchant to regenerate.');
+                            stopListening();
+                        } else if (/^[\x20-\x7E\r\n\t]+$/.test(text) && text.length > 0) {
+                            /* Non–Solana Pay (e.g. ggwave.ggerganov.com test) — show for verification */
+                            document.getElementById('output').textContent = 'Received: ' + text.slice(0, 80) + (text.length > 80 ? '…' : '');
+                            document.getElementById('output').classList.add('received');
+                            document.getElementById('status').textContent = 'Received (not Solana Pay)';
+                            document.getElementById('status').className = '';
+                            document.getElementById('ring').className = 'ring inactive';
+                            document.getElementById('listenBtn').style.display = 'block';
+                            document.getElementById('stopBtn').style.display = 'none';
+                        } else {
+                            console.log('[PayByEar] Decoded but filtered (not URI, not printable):', text.slice(0, 50));
+                        }
+                    }
+                };
+
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                isListening = true;
+                status.textContent = 'Listening…';
+                status.className = 'listening';
+                ring.className = 'ring';
+                document.getElementById('listenBtn').style.display = 'none';
+                document.getElementById('stopBtn').style.display = 'block';
+            } catch (err) {
+                status.textContent = 'Error: ' + err.message;
+                status.className = 'error';
+                ring.className = 'ring inactive';
+            }
+        }
+
+    </script>
+</body>
+</html>
