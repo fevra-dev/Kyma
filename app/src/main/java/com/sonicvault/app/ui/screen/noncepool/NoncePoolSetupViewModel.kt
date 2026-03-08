@@ -226,7 +226,9 @@ class NoncePoolSetupViewModel(
                 }
 
                 if (created.isEmpty()) {
-                    _state.value = State.Error("No nonce accounts created. Ensure Phantom is on DEVNET with ~0.004 SOL. Use devnet.faucet.solana.com for airdrop.")
+                    _state.value = State.Error("Accounts may have been created on-chain but could not be verified. Use Discover & Import with your wallet address to find them.")
+                } else if (created.size < count) {
+                    _state.value = State.Success("Created ${created.size}/$count nonce account(s). Use Discover & Import for any missing.")
                 } else {
                     _state.value = State.Success("Created ${created.size} nonce account(s)")
                     SonicVaultLogger.i("[NoncePoolSetup] setupPool created ${created.size} nonces")

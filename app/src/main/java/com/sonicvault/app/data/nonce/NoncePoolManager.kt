@@ -119,12 +119,6 @@ class NoncePoolManager(
         count: Int = DEFAULT_POOL_SIZE,
         signAndSubmit: suspend (buildTx: suspend (payer: String) -> Pair<ByteArray, String>?) -> Pair<String?, String?>?
     ): List<String> {
-        val blockhashResult = rpc.getLatestBlockhash()
-            ?: run {
-                SonicVaultLogger.e("[NoncePool] setupPool: no blockhash")
-                return emptyList()
-            }
-
         val rentLamports = rpc.getMinimumBalanceForRentExemption(NONCE_ACCOUNT_SIZE.toLong())
         if (rentLamports <= 0) {
             SonicVaultLogger.e("[NoncePool] setupPool: invalid rent exemption")
@@ -132,7 +126,15 @@ class NoncePoolManager(
         }
 
         val created = mutableListOf<String>()
+        val submittedButUnverified = mutableListOf<String>()
         repeat(count) { i ->
+            // Fresh blockhash per iteration — MWA signing takes user interaction time
+            val blockhashResult = rpc.getLatestBlockhash()
+                ?: run {
+                    SonicVaultLogger.e("[NoncePool] setupPool: no blockhash at $i")
+                    return@repeat
+                }
+
             val result = signAndSubmit { payer ->
                 val trimmed = payer.trim()
                 if (trimmed.isBlank()) {
@@ -178,22 +180,22 @@ class NoncePoolManager(
                 return@repeat
             }
 
-            // 5s delay for account to be visible via getNonce (3s was too short)
-            delay(5000)
+            delay(6000)
             var inserted = insertNonceAfterCreate(noncePubkey)
             if (!inserted) {
-                delay(3000)
+                delay(4000)
                 inserted = insertNonceAfterCreate(noncePubkey)
             }
             if (inserted) {
                 created.add(noncePubkey)
                 SonicVaultLogger.i("[NoncePool] setupPool: created nonce $i/${count}")
             } else {
-                SonicVaultLogger.w("[NoncePool] setupPool: insertNonceAfterCreate failed for $noncePubkey")
+                submittedButUnverified.add(noncePubkey)
+                SonicVaultLogger.w("[NoncePool] setupPool: TX submitted but nonce not yet readable for ${noncePubkey.take(8)}…")
             }
         }
 
-        SonicVaultLogger.i("[NoncePool] setupPool: created ${created.size}/$count nonces")
+        SonicVaultLogger.i("[NoncePool] setupPool: verified ${created.size}/$count, unverified ${submittedButUnverified.size}")
         return created
     }
 
@@ -208,7 +210,7 @@ class NoncePoolManager(
     suspend fun discoverExistingNonces(authorityPubkey: String): List<String> {
         val trimmed = authorityPubkey.trim()
         SonicVaultLogger.i("[NoncePool] Discovering nonces for authority ${trimmed.take(8)}…")
-        val filters = """[{"dataSize":$NONCE_ACCOUNT_SIZE},{"memcmp":{"offset":8,"bytes":"$trimmed"}}]"""
+        val filters = """[{"dataSize":$NONCE_ACCOUNT_SIZE},{"memcmp":{"offset":8,"bytes":"$trimmed","encoding":"base58"}}]"""
         return try {
             rpc.getProgramAccounts("11111111111111111111111111111111", filters).also {
                 SonicVaultLogger.i("[NoncePool] Discovered ${it.size} nonce account(s)")
@@ -250,10 +252,28 @@ class NoncePoolManager(
      */
     suspend fun importDiscoveredNonces(authorityPubkey: String): List<String> {
         val pubkeys = discoverExistingNonces(authorityPubkey.trim())
+        if (pubkeys.isEmpty()) {
+            SonicVaultLogger.w("[NoncePool] importDiscoveredNonces: no accounts found for ${authorityPubkey.trim().take(8)}…")
+            return emptyList()
+        }
         val imported = mutableListOf<String>()
         pubkeys.forEach { pubkey ->
             try {
-                val currentNonce = rpc.getNonce(pubkey) ?: return@forEach
+                val existing = dao.getByPublicKey(pubkey)
+                if (existing != null) {
+                    SonicVaultLogger.d("[NoncePool] Nonce ${pubkey.take(8)}… already in pool, skipping")
+                    imported.add(pubkey)
+                    return@forEach
+                }
+                var currentNonce = rpc.getNonce(pubkey)
+                if (currentNonce == null) {
+                    delay(2000)
+                    currentNonce = rpc.getNonce(pubkey)
+                }
+                if (currentNonce == null) {
+                    SonicVaultLogger.w("[NoncePool] Could not read nonce value for ${pubkey.take(8)}…")
+                    return@forEach
+                }
                 dao.insert(
                     NonceAccountEntity(
                         publicKey = pubkey,
@@ -265,7 +285,7 @@ class NoncePoolManager(
                 )
                 imported.add(pubkey)
             } catch (e: Exception) {
-                SonicVaultLogger.w("[NoncePool] Failed to import $pubkey: ${e.message}")
+                SonicVaultLogger.w("[NoncePool] Failed to import ${pubkey.take(8)}…: ${e.message}")
             }
         }
         return imported

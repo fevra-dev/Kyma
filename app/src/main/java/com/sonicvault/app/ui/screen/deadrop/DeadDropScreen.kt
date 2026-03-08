@@ -359,6 +359,45 @@ class DeadDropViewModel(
         }
     }
 
+    /**
+     * Plain broadcast: encode payload via ggwave and play immediately.
+     * No ECDH, no encryption, no fountain — for Solana Pay URIs and other
+     * one-way broadcasts that any receiver (including web) can decode.
+     */
+    fun broadcastPlain(payload: String) {
+        if (job?.isActive == true) return
+
+        job = viewModelScope.launch {
+            _state.value = DeadDropState.Broadcasting
+            SonicVaultLogger.i("[DeadDrop] plain broadcast ${payload.length} chars")
+
+            try {
+                val messageBytes = payload.toByteArray(Charsets.UTF_8)
+                val applyFp = _protocol.value == Protocol.ULTRASONIC && userPreferences.useAntiFingerprint
+                var pcm = withContext(Dispatchers.IO) {
+                    GgwaveDataOverSound.encode(messageBytes, _protocol.value, applyFingerprintRandomization = applyFp)
+                }
+                if (pcm == null) {
+                    SonicVaultLogger.w("[DeadDrop] plain encode failed; trying fallback protocol")
+                    val fallback = if (_protocol.value == Protocol.ULTRASONIC) Protocol.AUDIBLE else Protocol.ULTRASONIC
+                    pcm = withContext(Dispatchers.IO) {
+                        GgwaveDataOverSound.encode(messageBytes, fallback, applyFingerprintRandomization = applyFp)
+                    }
+                }
+                if (pcm == null) {
+                    _state.value = DeadDropState.Error("Audio encoding failed.")
+                    return@launch
+                }
+                playPcm(pcm)
+                _state.value = DeadDropState.BroadcastComplete("PLAIN")
+                SonicVaultLogger.i("[DeadDrop] plain broadcast complete")
+            } catch (e: Exception) {
+                SonicVaultLogger.e("[DeadDrop] plain broadcast failed", e)
+                _state.value = DeadDropState.Error("Could not send. Move devices closer and try again.")
+            }
+        }
+    }
+
     private suspend fun playPcm(pcm: ShortArray) = withContext(Dispatchers.IO) {
         val bufferSize = android.media.AudioTrack.getMinBufferSize(
             GgwaveDataOverSound.SAMPLE_RATE,
@@ -1167,17 +1206,19 @@ fun DeadDropScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text("Transfer complete", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                                Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RectangleShape,
-                                    border = BorderStroke(1.dp, outlineColor),
-                                    color = MaterialTheme.colorScheme.surfaceContainerLow
-                                ) {
-                                    Column(modifier = Modifier.padding(Spacing.md.dp)) {
-                                        Text("VERIFY CODE", style = LabelUppercaseStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Spacer(modifier = Modifier.height(Spacing.xs.dp))
-                                        Text(s.sas, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+                                if (s.sas != "PLAIN") {
+                                    Spacer(modifier = Modifier.height(Spacing.sm.dp))
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RectangleShape,
+                                        border = BorderStroke(1.dp, outlineColor),
+                                        color = MaterialTheme.colorScheme.surfaceContainerLow
+                                    ) {
+                                        Column(modifier = Modifier.padding(Spacing.md.dp)) {
+                                            Text("VERIFY CODE", style = LabelUppercaseStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Spacer(modifier = Modifier.height(Spacing.xs.dp))
+                                            Text(s.sas, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+                                        }
                                     }
                                 }
                                 Spacer(modifier = Modifier.height(Spacing.sm.dp))
@@ -1560,11 +1601,12 @@ fun DeadDropScreen(
                                     val uri = SolanaPayUri(
                                         recipient = recipient.trim(),
                                         amount = amount.toDoubleOrNull(),
-                                        label = "SonicVault",
+                                        label = "Kyma",
                                         message = null,
                                         memo = fullMemo
                                     )
-                                    viewModel.broadcast(context, String(uri.encode(), Charsets.UTF_8))
+                                    // Plain broadcast — any device can decode the URI
+                                    viewModel.broadcastPlain(String(uri.encode(), Charsets.UTF_8))
                                 }
                                 TxType.SKR_TIP -> {
                                     val ts = System.currentTimeMillis() / 1000
@@ -1574,12 +1616,12 @@ fun DeadDropScreen(
                                     val uri = SolanaPayUri(
                                         recipient = recipient.trim(),
                                         amount = amount.toDoubleOrNull(),
-                                        label = "SonicVault SKR",
+                                        label = "Kyma SKR",
                                         message = null,
                                         memo = fullMemo,
                                         splToken = "SKRepMQET9dGvadwUiEmVi1pcSHaH8eak7FXbp6FTQ5R"
                                     )
-                                    viewModel.broadcast(context, String(uri.encode(), Charsets.UTF_8))
+                                    viewModel.broadcastPlain(String(uri.encode(), Charsets.UTF_8))
                                 }
                                 TxType.COLD_SIGN -> {
                                     val mainActivity = context as? com.sonicvault.app.MainActivity
@@ -1596,7 +1638,7 @@ fun DeadDropScreen(
                                     }
                                 }
                                 TxType.CNFT_DROP -> {
-                                    viewModel.broadcast(context, eventId.trim())
+                                    viewModel.broadcastPlain(eventId.trim())
                                 }
                             }
                         }

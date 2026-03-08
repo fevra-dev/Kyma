@@ -364,7 +364,11 @@ class SolanaRpcClient(
      */
     suspend fun getNonce(nonceAccountPubkey: String): String? = withContext(Dispatchers.IO) {
         try {
-            val params = org.json.JSONArray().put(nonceAccountPubkey)
+            val config = JSONObject().apply {
+                put("encoding", "base64")
+                put("commitment", "confirmed")
+            }
+            val params = org.json.JSONArray().put(nonceAccountPubkey).put(config)
             val body = JSONObject().apply {
                 put("jsonrpc", "2.0")
                 put("id", 3)
