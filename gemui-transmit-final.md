@@ -10,7 +10,7 @@ import { Send, ArrowDownToLine, Check, Mic, Volume2, X, Activity } from 'lucide-
 const TX_TYPES = [
   { id: 'PAY', label: 'SOL Pay', unit: '◎', icon: '◎' },
   { id: 'SKR', label: 'SKR Tip', unit: 'SKR', icon: '⬡' },
-  { id: 'SIGN', label: 'Cold Sign', unit: 'SIG', icon: '⬛' },
+  { id: 'SIGN', label: 'Cold Sign', unit: 'SIG', icon: '□' },
   { id: 'CNFT', label: 'cNFT Drop', unit: 'NFT', icon: '◈' },
 ];
 

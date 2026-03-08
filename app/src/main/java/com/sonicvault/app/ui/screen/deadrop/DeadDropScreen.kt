@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -143,7 +144,7 @@ sealed class DeadDropState {
 enum class TxType(val label: String, val icon: String, val unit: String) {
     SOL_PAY("Sol Pay", "◎", "◎"),
     SKR_TIP("SKR Tip", "⬡", "SKR"),
-    COLD_SIGN("Cold Sign", "⬛", "SIG"),
+    COLD_SIGN("Cold Sign", "□", "SIG"),
     CNFT_DROP("cNFT Drop", "◈", "NFT");
 
     val hasAmount: Boolean get() = this == SOL_PAY || this == SKR_TIP
@@ -861,6 +862,7 @@ fun DeadDropScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
+            .systemBarsPadding()
     ) {
 
         /* ── TX / RX TOGGLE — full width, high contrast, no rounding ── */
