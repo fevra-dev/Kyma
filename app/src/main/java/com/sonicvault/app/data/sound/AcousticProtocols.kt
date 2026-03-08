@@ -21,14 +21,17 @@ object AcousticProtocols {
     const val AUDIBLE_FAST = 1
     const val AUDIBLE_FASTEST = 2
     const val ULTRASONIC_NORMAL = 3
-    const val ULTRASONIC_FAST = 4      // Default for Dead Drop
+    const val ULTRASONIC_FAST = 4
     const val ULTRASONIC_FASTEST = 5
 
     // ─── Defaults ───────────────────────────────────────────────────────────
-    /** Used for all SonicVault ultrasonic transmissions. */
-    const val DEFAULT_ULTRASONIC: Int = ULTRASONIC_FAST
+    /** Used for all SonicVault ultrasonic transmissions — 3 frames/symbol for max throughput. */
+    const val DEFAULT_ULTRASONIC: Int = ULTRASONIC_FASTEST
 
-    /** Fallback for devices that cannot reproduce 18+ kHz reliably. */
+    /** Reliable fallback for noisy environments — 9 frames/symbol, ~3x slower but robust. */
+    const val RELIABLE_FALLBACK: Int = ULTRASONIC_NORMAL
+
+    /** Fallback for devices that cannot reproduce near-ultrasonic (15+ kHz) reliably. */
     const val DEFAULT_AUDIBLE_FALLBACK: Int = AUDIBLE_NORMAL
 
     /** Default volume (0–100). High volume → speaker distortion above 18 kHz. */
@@ -70,6 +73,6 @@ object AcousticProtocols {
      */
     fun toGgwaveProtocol(protocol: Protocol, useAudibleFast: Boolean = false): Int = when (protocol) {
         Protocol.AUDIBLE -> if (useAudibleFast) AUDIBLE_FAST else AUDIBLE_NORMAL
-        Protocol.ULTRASONIC -> ULTRASONIC_FAST
+        Protocol.ULTRASONIC -> DEFAULT_ULTRASONIC
     }
 }

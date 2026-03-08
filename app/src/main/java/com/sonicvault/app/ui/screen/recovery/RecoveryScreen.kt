@@ -351,6 +351,7 @@ fun RecoveryScreen(
                     }
                     ShowSeedStep(
                         seedPhrase = s.seedPhrase,
+                        isPrivateKey = s.isPrivateKey,
                         onCopy = {
                             view.performHapticFeedback(HapticFeedbackConstantsCompat.CONFIRM)
                             copyToClipboard(context, "Kyma", s.seedPhrase)
@@ -363,8 +364,8 @@ fun RecoveryScreen(
                         }
                     )
                     Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                    /* Save to Seed Vault: launch import flow; user enters seed in Seed Vault secure UI */
-                    if (isSeedVaultAvailable(context)) {
+                    /* Save to Seed Vault: only for seed phrases; private keys import via Phantom/Solflare */
+                    if (!s.isPrivateKey && isSeedVaultAvailable(context)) {
                         val importIntent = createImportSeedIntent(context)
                         if (importIntent != null) {
                             Spacer(modifier = Modifier.height(Spacing.xs.dp))

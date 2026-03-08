@@ -123,7 +123,7 @@ class BackupViewModel(
     fun startBackup(activity: FragmentActivity) {
         com.sonicvault.app.logging.SonicVaultLogger.d("[Backup] startBackup seedBlank=${_seedPhrase.isBlank()} coverUri=${_coverUri.value}")
         if (_seedPhrase.isBlank()) {
-            _state.value = BackupState.Error("Enter a seed phrase (12 or 24 words).")
+            _state.value = BackupState.Error("Enter a seed phrase (12 or 24 words) or Solana private key.")
             return
         }
         if (_coverUri.value == null) {

@@ -82,7 +82,7 @@ object AcousticTransmitter {
             track.play()
             track.write(samples, 0, samples.size)
             val durationMs = samples.size * 1000L / GgwaveDataOverSound.SAMPLE_RATE
-            delay(durationMs + 200)
+            delay(durationMs + 100)
             track.stop()
         } finally {
             track.release()

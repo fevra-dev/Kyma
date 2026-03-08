@@ -13,7 +13,7 @@ import com.sonicvault.app.logging.SonicVaultLogger
  */
 object GgwaveDataOverSound {
 
-    /** ggwave sample rate for ultrasonic; required for 18–20 kHz carrier. */
+    /** ggwave sample rate for ultrasonic; required for 15–19.5 kHz near-ultrasonic carrier. */
     const val SAMPLE_RATE = 48000
 
     /**

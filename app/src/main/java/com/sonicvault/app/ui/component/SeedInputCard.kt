@@ -26,12 +26,14 @@ import com.sonicvault.app.logging.SonicVaultLogger
 import com.sonicvault.app.ui.theme.JetBrainsMonoFamily
 import com.sonicvault.app.ui.theme.LabelUppercaseStyle
 import com.sonicvault.app.ui.theme.Spacing
+import com.sonicvault.app.util.SolanaPrivateKeyValidator
 
 /**
- * Seed phrase input with label, eye toggle, word count, validity.
- * Label: "SEED PHRASE" (uppercase). Rams: useful, understandable.
+ * Seed phrase or private key input with label, eye toggle, word/char count.
+ * Detects input type: seed phrase (space-separated words) vs private key (long base58 string).
+ * Shows word count for seed, char count for private key. Rams: useful, understandable.
  *
- * @param compactForFixedLayout When true, text field shows 3 lines only (12 words fit). Keeps layout fixed.
+ * @param compactForFixedLayout When true, text field shows 3 lines. Keeps layout fixed.
  */
 @Composable
 fun SeedInputCard(
@@ -45,10 +47,28 @@ fun SeedInputCard(
     /** 3-line text field for fixed screens (12 words fit); Rams: as little as possible. */
     compactForFixedLayout: Boolean = false
 ) {
-    val wordCount = remember(seedPhrase) {
-        seedPhrase.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.size
+    val trimmed = remember(seedPhrase) { seedPhrase.trim() }
+    val words = remember(trimmed) { trimmed.split(Regex("\\s+")).filter { it.isNotEmpty() } }
+    val wordCount = words.size
+    val charCount = trimmed.length
+
+    val isPrivateKeyMode = remember(charCount, words) {
+        charCount > 50 && words.size <= 1 ||
+        words.any { it.length > 10 }
     }
-    SonicVaultLogger.d("[SeedInputCard] wordCount=$wordCount")
+
+    SonicVaultLogger.d("[SeedInputCard] wordCount=$wordCount charCount=$charCount isPrivateKeyMode=$isPrivateKeyMode")
+
+    val label = if (isPrivateKeyMode) "PRIVATE KEY" else "SEED PHRASE"
+    val placeholder = if (isPrivateKeyMode) "Paste Solana private key (base58)" else "12 or 24 recovery words"
+    val (countText, isValid) = if (isPrivateKeyMode) {
+        val pkValid = charCount in 80..95 && trimmed.all { it in "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz" }
+        (if (pkValid) "$charCount / 88 VALID" else "$charCount chars") to pkValid
+    } else {
+        val seedValid = wordCount == 12 || wordCount == 24
+        val target = if (wordCount > 12) 24 else 12
+        (if (seedValid) "$wordCount / $target VALID" else "$wordCount / $target words") to seedValid
+    }
 
     CardSection(modifier = modifier) {
         Row(
@@ -57,7 +77,7 @@ fun SeedInputCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "SEED PHRASE",
+                text = label,
                 style = LabelUppercaseStyle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -67,7 +87,7 @@ fun SeedInputCard(
             ) {
                 Icon(
                     imageVector = if (showPhrase) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                    contentDescription = if (showPhrase) "Hide seed" else "Show seed"
+                    contentDescription = if (showPhrase) "Hide" else "Show"
                 )
             }
         }
@@ -75,7 +95,7 @@ fun SeedInputCard(
         OutlinedTextField(
             value = seedPhrase,
             onValueChange = onSeedPhraseChange,
-            placeholder = { Text("Enter your recovery phrase", style = MaterialTheme.typography.bodyMedium) },
+            placeholder = { Text(placeholder, style = MaterialTheme.typography.bodyMedium) },
             visualTransformation = if (showPhrase) VisualTransformation.None else PasswordVisualTransformation(),
             modifier = Modifier
                 .fillMaxWidth()
@@ -93,7 +113,6 @@ fun SeedInputCard(
                 unfocusedTextColor = MaterialTheme.colorScheme.onSurface
             )
         )
-        /* Optional hint: only when hintText is explicitly provided (not the default). */
         if (hintText != null) {
             Spacer(modifier = Modifier.height(Spacing.xs.dp))
             Text(
@@ -103,14 +122,10 @@ fun SeedInputCard(
             )
         }
         Spacer(modifier = Modifier.height(Spacing.xs.dp))
-        /* Word count with target: "0 / 12 words" progresses to "12 / 12 VALID". Rams: honest. */
-        val isValid = wordCount == 12 || wordCount == 24
-        val target = if (wordCount > 12) 24 else 12
         Text(
-            text = if (isValid) "$wordCount / $target VALID" else "$wordCount / $target words",
+            text = countText,
             style = MaterialTheme.typography.bodySmall,
-            color = if (isValid) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (isValid) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

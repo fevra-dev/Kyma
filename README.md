@@ -52,7 +52,7 @@ Built for the **Solana Seeker App Hackathon** and **Monolith Hackathon 2026**.
 
 ### Sound Transfer
 - **Ultrasonic data-over-sound** — Transmit/receive via ggwave multi-tone FSK (mFSK) in the 15–19.5 kHz near-ultrasonic band (~160 bps effective throughput) between devices. Custom JNI wrapper; 15 kHz base frequency.
-- **Chunked transmission** — Payloads >140 bytes: AcousticChunker (MAGIC + SESSION_ID + SEQ + CRC16) → each chunk 2× with 300ms gap. AcousticChunkReceiver reassembles.
+- **Chunked transmission** — Payloads >140 bytes: AcousticChunker (MAGIC + SESSION_ID + SEQ + CRC16) → each chunk 2× with 200ms gap. AcousticChunkReceiver reassembles.
 - **NACK retransmit** — AcousticNack: cold device sends NACK on decode/CRC fail; hot retransmits that chunk.
 - **AcousticTransmitter / AcousticChunkReceiver** — Session-filtered flows for SonicSafe (TX session 1, signature session 2) and RestoreBroadcast (session 3).
 - **Dead Drop broadcast** — One-to-many encrypted ultrasonic broadcast with ECDH + AES-256-GCM per recipient
@@ -87,7 +87,7 @@ Built for the **Solana Seeker App Hackathon** and **Monolith Hackathon 2026**.
 ### UX
 - **Multimodal success feedback** — Haptic (CONFIRM + double-pulse), particle burst animation, ascending C5-E5 audio chirp
 - **Voice biometric** — Optional voiceprint enrollment for authentication
-- **Onboarding flow** — 3-screen introduction for first-time users
+- **Onboarding flow** — 4-screen introduction: acoustic transactions, cold signing, nonce pool, seed backup
 - **Dieter Rams design** — Minimal, functional, honest UI following 10 Principles of Good Design
 
 ---
@@ -190,7 +190,7 @@ Step-by-step flows for validating SonicRequest, SonicSafe, and Nonce Pool on dev
 4. **Cold phone**: Open SonicSafe → Cold Signer tab (listening).
 5. Cold phone decodes TX, shows details (recipient, amount, durable nonce badge).
 6. Tap APPROVE AND SIGN — Phantom signs.
-7. Cold phone transmits 64-byte signature back acoustically (2× with 1s gap for reliability).
+7. Cold phone transmits 64-byte signature back acoustically (2× with 600ms gap for reliability).
 8. Hot phone receives signature, reconstructs full TX, submits to devnet.
 9. Both phones show success.
 

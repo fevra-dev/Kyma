@@ -34,7 +34,8 @@ import com.sonicvault.app.ui.theme.Spacing
 import kotlinx.coroutines.launch
 
 /**
- * First-time onboarding: 3 screens explaining backup, recovery, and local-only storage.
+ * First-time onboarding: 4 screens introducing Kyma's primary features.
+ * Lead with acoustic transactions (core value), end with seed backup (secondary).
  * Rams: useful, understandable, minimal.
  */
 @OptIn(ExperimentalFoundationApi::class)
@@ -42,8 +43,10 @@ import kotlinx.coroutines.launch
 fun OnboardingScreen(
     onComplete: () -> Unit
 ) {
-    val pagerState = rememberPagerState(pageCount = { 3 })
+    val pageCount = 4
+    val pagerState = rememberPagerState(pageCount = { pageCount })
     val scope = rememberCoroutineScope()
+    val lastPage = pageCount - 1
 
     Column(
         modifier = Modifier
@@ -60,25 +63,28 @@ fun OnboardingScreen(
         ) { page ->
             when (page) {
                 0 -> OnboardingPage(
-                    title = "Your seed phrase, hidden in sound",
-                    body = "Create a backup file that looks like an ordinary audio recording. Your seed is steganographically embedded—invisible to the ear."
+                    title = "Pay over sound, not QR codes",
+                    body = "Hold two devices close. Transmit encrypted Solana transactions through near-ultrasonic sound. No QR. No NFC. No pairing."
                 )
                 1 -> OnboardingPage(
-                    title = "Recover anytime from your audio file",
-                    body = "When you need to restore, select your backup file and decode. Enter your password if you encrypted it."
+                    title = "Sign in silence",
+                    body = "Air-gapped cold signing via Seed Vault TEE. Your private key never leaves secure hardware. Sound is the only bridge."
                 )
                 2 -> OnboardingPage(
-                    title = "Zero cloud. Zero tracking. All local.",
-                    body = "Data never leaves your device. You control your backup files. All processing happens on your phone—your seed never leaves it."
+                    title = "Set up your nonce pool",
+                    body = "Durable nonce accounts keep your transactions valid during acoustic transfer. Set up once in Settings, use everywhere."
+                )
+                3 -> OnboardingPage(
+                    title = "Your seed, hidden in sound",
+                    body = "Back up your seed phrase inside audio files. Steganographically embedded, invisible to the ear. Zero cloud. All local."
                 )
             }
         }
-        /* Page indicator dots: filled for current page, outline for others. Rams: feedback. */
         Row(
             modifier = Modifier.padding(top = Spacing.sm.dp),
             horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp)
         ) {
-            repeat(3) { index ->
+            repeat(pageCount) { index ->
                 Box(
                     modifier = Modifier
                         .size(8.dp)
@@ -93,10 +99,9 @@ fun OnboardingScreen(
             }
         }
         Spacer(modifier = Modifier.height(Spacing.md.dp))
-        /** Bottom button: extra margin clears gesture-nav / system bar on edge-to-edge. */
         Button(
             onClick = {
-                if (pagerState.currentPage < 2) {
+                if (pagerState.currentPage < lastPage) {
                     scope.launch {
                         pagerState.animateScrollToPage(pagerState.currentPage + 1)
                     }
@@ -107,11 +112,10 @@ fun OnboardingScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Text(
-                text = if (pagerState.currentPage < 2) "NEXT" else "GET STARTED"
+                text = if (pagerState.currentPage < lastPage) "NEXT" else "GET STARTED"
             )
         }
-        /* Skip: lowest visual weight, only on pages before the last. Rams: unobtrusive. */
-        if (pagerState.currentPage < 2) {
+        if (pagerState.currentPage < lastPage) {
             TextButton(
                 onClick = onComplete,
                 modifier = Modifier.fillMaxWidth()

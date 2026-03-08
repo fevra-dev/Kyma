@@ -45,7 +45,7 @@ class RecoveryViewModel(
                             _state.value = RecoveryState.Decrypting
                             val decryptResult = recoverSeedUseCase.recoverWithBiometric(extracted, activity)
                             decryptResult.fold(
-                                onSuccess = { _state.value = RecoveryState.ShowSeed(it.seed, it.checksumVerified) },
+                                onSuccess = { _state.value = RecoveryState.ShowSeed(it.seed, it.checksumVerified, it.isPrivateKey) },
                                 onFailure = { _state.value = RecoveryState.Error(it.message ?: "Recovery failed.") }
                             )
                         }
@@ -61,7 +61,7 @@ class RecoveryViewModel(
             _state.value = RecoveryState.Decrypting
             val result = recoverSeedUseCase.recoverWithBiometric(extracted, activity)
             result.fold(
-                onSuccess = { _state.value = RecoveryState.ShowSeed(it.seed, it.checksumVerified) },
+                onSuccess = { _state.value = RecoveryState.ShowSeed(it.seed, it.checksumVerified, it.isPrivateKey) },
                 onFailure = { _state.value = RecoveryState.Error(it.message ?: "Authentication failed.") }
             )
         }
@@ -80,7 +80,7 @@ class RecoveryViewModel(
                     if (matched) {
                         val decryptResult = recoverSeedUseCase.recoverWithBiometric(extracted, activity)
                         decryptResult.fold(
-                            onSuccess = { _state.value = RecoveryState.ShowSeed(it.seed, it.checksumVerified) },
+                            onSuccess = { _state.value = RecoveryState.ShowSeed(it.seed, it.checksumVerified, it.isPrivateKey) },
                             onFailure = { _state.value = RecoveryState.Error(it.message ?: "Recovery failed.") }
                         )
                     } else {
@@ -97,7 +97,7 @@ class RecoveryViewModel(
             _state.value = RecoveryState.Decrypting
             val result = recoverSeedUseCase.recoverWithPassword(extracted, password)
             result.fold(
-                onSuccess = { _state.value = RecoveryState.ShowSeed(it.seed, it.checksumVerified) },
+                onSuccess = { _state.value = RecoveryState.ShowSeed(it.seed, it.checksumVerified, it.isPrivateKey) },
                 onFailure = { _state.value = RecoveryState.Error(it.message ?: "Invalid password.") }
             )
         }

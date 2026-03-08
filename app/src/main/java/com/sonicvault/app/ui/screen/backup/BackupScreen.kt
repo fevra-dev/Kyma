@@ -90,10 +90,7 @@ fun BackupScreen(
     var seedPhrase by remember { mutableStateOf("") }
     var showPhrase by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
-    var passwordConfirm by remember { mutableStateOf("") }
-    /** Eye toggles for password visibility. */
     var passwordVisible by remember { mutableStateOf(false) }
-    var passwordConfirmVisible by remember { mutableStateOf(false) }
 
     /** OpenDocument gives users the full system file browser (Music, Downloads, etc.) */
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -172,7 +169,7 @@ fun BackupScreen(
                             value = password,
                             onValueChange = {
                                 password = it
-                                if (password == passwordConfirm && password.length >= pwMinLen) viewModel.setPassword(password) else viewModel.setPassword(null)
+                                viewModel.setPassword(if (it.length >= pwMinLen) it else null)
                             },
                             label = { Text("Encryption password") },
                             modifier = Modifier.fillMaxWidth(),
@@ -188,41 +185,6 @@ fun BackupScreen(
                                     Icon(
                                         imageVector = if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
                                         contentDescription = if (passwordVisible) "Hide password" else "Show password"
-                                    )
-                                }
-                            },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.outline,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                                cursorColor = MaterialTheme.colorScheme.primary,
-                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
-                            )
-                        )
-                        Spacer(modifier = Modifier.height(Spacing.xs.dp))
-                        val passwordMismatch = passwordConfirm.isNotBlank() && password != passwordConfirm
-                        OutlinedTextField(
-                            value = passwordConfirm,
-                            onValueChange = {
-                                passwordConfirm = it
-                                if (password == passwordConfirm && password.length >= pwMinLen) viewModel.setPassword(password) else viewModel.setPassword(null)
-                            },
-                            label = { Text("Confirm password") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            isError = passwordMismatch,
-                            supportingText = if (passwordMismatch) {
-                                { Text("Passwords don't match", color = MaterialTheme.colorScheme.error) }
-                            } else null,
-                            visualTransformation = if (passwordConfirmVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                            trailingIcon = {
-                                IconButton(onClick = { passwordConfirmVisible = !passwordConfirmVisible }) {
-                                    Icon(
-                                        imageVector = if (passwordConfirmVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                                        contentDescription = if (passwordConfirmVisible) "Hide password" else "Show password"
                                     )
                                 }
                             },
@@ -296,7 +258,7 @@ fun BackupScreen(
             val activity = LocalContext.current
             if (activity is androidx.fragment.app.FragmentActivity) {
                 val minPasswordLength = com.sonicvault.app.domain.usecase.CreateBackupUseCase.MIN_PASSWORD_LENGTH
-                val passwordValid = password == passwordConfirm && password.length >= minPasswordLength
+                val passwordValid = password.length >= minPasswordLength
                 val wordCount = seedPhrase.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.size
                 val seedValid = wordCount == 12 || wordCount == 24
                 val coverSelected = coverUri != null

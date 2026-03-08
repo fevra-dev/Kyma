@@ -67,7 +67,7 @@ class SonicSafeViewModel(
             }
             .catch { e ->
                 SonicVaultLogger.e("[SonicSafeVM] receive error", e)
-                _state.value = State.Error("Could not receive transaction. Move devices closer.")
+                _state.value = State.Error("No transaction detected. Move devices within 30cm and ensure sender is transmitting.")
             }
             .launchIn(viewModelScope)
 
@@ -76,7 +76,7 @@ class SonicSafeViewModel(
             if (_state.value is State.Idle) {
                 receiveJob?.cancel()
                 receiveJob = null
-                _state.value = State.Error("No transaction received. Ensure the sender is transmitting.")
+                _state.value = State.Error("Timed out waiting for transaction. Restart both devices and try again.")
             }
         }
     }
@@ -122,7 +122,7 @@ class SonicSafeViewModel(
                     // Transmit 2x with 1s gap so hot device has two chances to catch it
                     withContext(Dispatchers.IO) {
                         AcousticTransmitter.transmitSingle(envelope, applyFingerprintRandomization = userPreferences.useAntiFingerprint)
-                        delay(1000)
+                        delay(600)
                         AcousticTransmitter.transmitSingle(envelope, applyFingerprintRandomization = userPreferences.useAntiFingerprint)
                     }
                     _state.value = State.Success(Base64.getEncoder().encodeToString(signature).take(24) + "…")

@@ -28,8 +28,8 @@ object AcousticChunker {
     const val MAX_DATA_PER_CHUNK = 120
     const val CHUNK_SIZE = HEADER_SIZE + MAX_DATA_PER_CHUNK
 
-    /** Gap between chunk transmissions in ms. */
-    const val GAP_BETWEEN_CHUNKS_MS = 300L
+    /** Gap between chunk transmissions in ms — tightened for ULTRASONIC_FASTEST (3 frames/symbol). */
+    const val GAP_BETWEEN_CHUNKS_MS = 200L
 
     /** Max payload size for acoustic relay. Larger TX show "Transaction too large" instead of transmitting. */
     const val MAX_ACOUSTIC_TX_BYTES = 600

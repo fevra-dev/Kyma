@@ -23,7 +23,8 @@ import kotlinx.coroutines.flow.flowOn
  */
 object AcousticChunkReceiver {
 
-    private const val LISTEN_WINDOW_SECONDS = 12
+    /** Recording window per decode attempt — 8s captures a full single-burst with margin. */
+    private const val LISTEN_WINDOW_SECONDS = 8
     private const val SAMPLE_RATE = GgwaveDataOverSound.SAMPLE_RATE
 
     /** Magic for 64-byte signature envelope: 0x53 0x49 ("SI"). Hot signer receives single-burst. */
@@ -104,9 +105,11 @@ object AcousticChunkReceiver {
         rawPayloadSizes: Set<Int>? = null
     ): Flow<ByteArray> = flow {
         val chunksBySession = mutableMapOf<Int, MutableList<AcousticChunker.ChunkData>>()
+        var consecutiveMisses = 0
         while (coroutineContext.isActive) {
             val (chunk, rawPayload) = recordAndDecode(context)
             if (rawPayload != null) {
+                consecutiveMisses = 0
                 if (rawPayload.size == 66 &&
                     rawPayload.size >= SIG_ENVELOPE_MAGIC.size &&
                     rawPayload.copyOfRange(0, SIG_ENVELOPE_MAGIC.size).contentEquals(SIG_ENVELOPE_MAGIC) &&
@@ -130,8 +133,15 @@ object AcousticChunkReceiver {
                     SonicVaultLogger.i("[AcousticChunkReceiver] raw payload ${rawPayload.size} bytes")
                     emit(rawPayload)
                 }
+            } else {
+                consecutiveMisses++
+                if (consecutiveMisses == 3) {
+                    SonicVaultLogger.w("[AcousticChunkReceiver] 3 consecutive decode misses — check device distance and ambient noise")
+                } else if (consecutiveMisses % 5 == 0) {
+                    SonicVaultLogger.w("[AcousticChunkReceiver] $consecutiveMisses consecutive misses — still listening")
+                }
             }
-            delay(500)
+            delay(200)
         }
     }.flowOn(Dispatchers.IO)
 }

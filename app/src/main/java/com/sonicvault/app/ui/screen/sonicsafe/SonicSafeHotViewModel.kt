@@ -121,6 +121,7 @@ class SonicSafeHotViewModel(
                 }
 
                 _state.value = State.Listening
+                SonicVaultLogger.i("[SonicSafeHotVM] listening for signed TX at ${System.currentTimeMillis()}")
                 listenForSignedAndBroadcast(appContext)
             } catch (e: Exception) {
                 SonicVaultLogger.e("[SonicSafeHotVM] sendForSigning failed", e)
@@ -238,7 +239,7 @@ class SonicSafeHotViewModel(
         val signedFlow = AcousticChunkReceiver.receiveFlow(context, sessionIdFilter = 2)
             .onEach { receivedBytes ->
                 timeoutJob?.cancel()
-                SonicVaultLogger.i("[SonicSafeHotVM] received ${receivedBytes.size} bytes from cold")
+                SonicVaultLogger.i("[SonicSafeHotVM] received ${receivedBytes.size} bytes from cold at ${System.currentTimeMillis()}")
                 val signedTxBytes = if (receivedBytes.size == 64 && unsignedBytes != null) {
                     SolanaTransactionBuilder.reconstructSignedTx(unsignedBytes, receivedBytes)
                 } else if (receivedBytes.size > 64) {
@@ -249,7 +250,7 @@ class SonicSafeHotViewModel(
                 if (signedTxBytes == null) {
                     SonicVaultLogger.w("[SonicSafeHotVM] invalid payload or missing original TX")
                     originalTxBytes = null
-                    _state.value = State.Error("Invalid signature received. Try again.")
+                    _state.value = State.Error("Received data could not be verified. Ensure both devices are on the same protocol.")
                     return@onEach
                 }
                 val base64 = Base64.getEncoder().encodeToString(signedTxBytes)
@@ -258,7 +259,7 @@ class SonicSafeHotViewModel(
                 if (sig != null) {
                     _state.value = State.Success(sig, SolanaRpcClient.explorerUrl(sig))
                 } else {
-                    _state.value = State.Error("Transaction could not be sent. Check network and try again.")
+                    _state.value = State.Error("Transaction broadcast failed. Check internet connection and try again.")
                 }
                 originalTxBytes = null
             }
@@ -278,7 +279,7 @@ class SonicSafeHotViewModel(
                 listenJob = null
                 originalTxBytes = null
                 markConsumedIfNeeded(null)
-                _state.value = State.Error("No signature received from cold signer.")
+                _state.value = State.Error("No signature received. Ensure cold device signed and transmitted. Move devices closer and try again.")
             }
         }
     }

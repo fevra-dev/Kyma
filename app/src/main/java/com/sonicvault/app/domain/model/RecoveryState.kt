@@ -2,8 +2,9 @@ package com.sonicvault.app.domain.model
 
 /**
  * Result of successful seed recovery. [checksumVerified] is first 8 hex chars when hybrid checksum matched.
+ * [isPrivateKey] true when recovered payload is a Solana private key (base58) rather than BIP39 mnemonic.
  */
-data class RecoveryResult(val seed: String, val checksumVerified: String? = null)
+data class RecoveryResult(val seed: String, val checksumVerified: String? = null, val isPrivateKey: Boolean = false)
 
 /**
  * Recovery flow state machine:
@@ -25,6 +26,6 @@ sealed class RecoveryState {
     data class VerifyingVoice(val extracted: ExtractedPayload, val challengeWord: String) : RecoveryState()
     /** Timelock: backup unlocks after this Unix timestamp (seconds). */
     data class TimelockNotReached(val unlockTimestamp: Long) : RecoveryState()
-    data class ShowSeed(val seedPhrase: String, val checksumVerified: String? = null) : RecoveryState()
+    data class ShowSeed(val seedPhrase: String, val checksumVerified: String? = null, val isPrivateKey: Boolean = false) : RecoveryState()
     data class Error(val message: String) : RecoveryState()
 }

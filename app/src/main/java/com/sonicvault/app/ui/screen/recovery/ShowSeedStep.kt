@@ -40,27 +40,24 @@ import com.sonicvault.app.ui.theme.LabelUppercaseStyle
 import com.sonicvault.app.ui.theme.Spacing
 
 /**
- * Recovered seed: clear label, show/hide toggle, CardSection. Honest warning.
- * When [onCopy] is provided, shows a copy button that copies to clipboard (with auto-clear)
- * and immediately hides the seed (shows circles) for security.
+ * Recovered seed or private key: clear label, show/hide toggle, CardSection.
+ * When [isPrivateKey] true, hides word-by-word mode and shows char count.
  * Rams: understandable, honest.
  *
- * @param seedPhrase The recovered seed phrase to display.
- * @param onCopy Optional callback when user taps copy; performs copy + optional snackbar.
- *               When provided, a "COPY TO CLIPBOARD" button is shown. On tap: seed is
- *               hidden (circles) and [onCopy] is invoked.
- * @param modifier Modifier for the CardSection.
+ * @param seedPhrase The recovered seed phrase or private key to display.
+ * @param onCopy Optional callback when user taps copy.
+ * @param isPrivateKey True when recovered payload is a Solana private key (no word-by-word, no Seed Vault).
  */
 @Composable
 fun ShowSeedStep(
     seedPhrase: String,
     onCopy: (() -> Unit)? = null,
+    isPrivateKey: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var showPhrase by remember { mutableStateOf(false) }
-    /** Toggle between full-field view and clipboard-free word-by-word view. */
     var wordByWordMode by remember { mutableStateOf(false) }
-    SonicVaultLogger.d("[ShowSeedStep] recovered seed length=${seedPhrase.length}")
+    SonicVaultLogger.d("[ShowSeedStep] recovered length=${seedPhrase.length} isPrivateKey=$isPrivateKey")
 
     val wordCount = remember(seedPhrase) {
         seedPhrase.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.size
@@ -77,18 +74,24 @@ fun ShowSeedStep(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (wordByWordMode) "WORD-BY-WORD" else "RECOVERED SEED",
+                text = when {
+                    isPrivateKey -> "RECOVERED PRIVATE KEY"
+                    wordByWordMode -> "WORD-BY-WORD"
+                    else -> "RECOVERED SEED"
+                },
                 style = LabelUppercaseStyle,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Row {
-                /** Toggle word-by-word mode (clipboard-free). */
-                IconButton(onClick = { wordByWordMode = !wordByWordMode }) {
-                    Text(
-                        text = if (wordByWordMode) "ALL" else "1x1",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                /** Toggle word-by-word mode (seed phrase only). */
+                if (!isPrivateKey) {
+                    IconButton(onClick = { wordByWordMode = !wordByWordMode }) {
+                        Text(
+                            text = if (wordByWordMode) "ALL" else "1x1",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 if (!wordByWordMode) {
                     IconButton(onClick = { showPhrase = !showPhrase }) {
@@ -130,7 +133,7 @@ fun ShowSeedStep(
         if (!wordByWordMode) {
             Spacer(modifier = Modifier.height(Spacing.xs.dp))
             Text(
-                text = "$wordCount WORDS",
+                text = if (isPrivateKey) "${seedPhrase.length} chars" else "$wordCount WORDS",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

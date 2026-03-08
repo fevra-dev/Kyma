@@ -5,14 +5,23 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.StartOffset
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,22 +29,26 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.runtime.Composable
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.DisposableEffect
@@ -47,22 +60,26 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.view.HapticFeedbackConstantsCompat
 import com.sonicvault.app.ui.theme.TouchTargetMin
-import com.sonicvault.app.ui.component.ConnectionState
-import com.sonicvault.app.ui.component.SoundHandshakeIndicator
-import com.sonicvault.app.ui.component.StatusBar
-import com.sonicvault.app.ui.component.SuccessCelebration
 import com.sonicvault.app.ui.theme.LabelUppercaseStyle
 import com.sonicvault.app.ui.theme.Spacing
 import com.sonicvault.app.SonicVaultApplication
 import com.sonicvault.app.ui.screen.sonicsafe.ColdSignerScreen
 import com.sonicvault.app.ui.screen.sonicrequest.SonicRequestSheet
 import com.sonicvault.app.ui.screen.sonicrequest.SonicRequestViewModel
-import com.sonicvault.app.ui.screen.sonicsafe.SendSolFormContent
 import com.sonicvault.app.ui.screen.sonicsafe.SonicSafeHotViewModel
 import com.sonicvault.app.ui.screen.sonicsafe.SonicSafeViewModel
 import android.content.Context
@@ -120,6 +137,24 @@ sealed class DeadDropState {
     /** Chunked TX received (session 1); show cold sign UI. */
     data class ReceivedTxToSign(val txBytes: ByteArray) : DeadDropState()
     data class Error(val message: String) : DeadDropState()
+}
+
+/** Transaction types for TRANSMIT mode. Rams: each has a clear, defined purpose. */
+enum class TxType(val label: String, val icon: String, val unit: String) {
+    SOL_PAY("Sol Pay", "◎", "◎"),
+    SKR_TIP("SKR Tip", "⬡", "SKR"),
+    COLD_SIGN("Cold Sign", "⬛", "SIG"),
+    CNFT_DROP("cNFT Drop", "◈", "NFT");
+
+    val hasAmount: Boolean get() = this == SOL_PAY || this == SKR_TIP
+    val hasRecipient: Boolean get() = this == SOL_PAY || this == SKR_TIP || this == COLD_SIGN
+    val hasMemo: Boolean get() = this == SOL_PAY || this == SKR_TIP
+    val hasEventId: Boolean get() = this == CNFT_DROP
+    val awaitingLabel: String get() = when (this) {
+        COLD_SIGN -> "Awaiting TX Payload"
+        CNFT_DROP -> "Event ID Required"
+        else -> ""
+    }
 }
 
 /** ECDH payload header: nonce(8) + deviceBinding(32) = 40 bytes. Passphrase mode: raw message. */
@@ -538,51 +573,161 @@ class DeadDropViewModel(
     }
 }
 
-/** Protocol row: Audible / Ultrasonic. Matches reference: bordered surface, filled selected tab. */
+/* ═══════════════════════════════════════════════════════════════════════════
+   UI COMPOSABLES — Rams: "Less, but better." No protocol selector (always
+   ULTRASONIC_FASTEST). TX/RX toggle is the top element. No decoration.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Acoustic waveform: 7 bars with staggered animation. Functional, not decorative. */
 @Composable
-private fun DeadDropProtocolRow(
-    protocol: Protocol,
-    onProtocolChange: (Protocol) -> Unit,
-    enabled: Boolean = true
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RectangleShape,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        color = MaterialTheme.colorScheme.surface
+private fun AcousticVisualizer(isActive: Boolean, isSuccess: Boolean, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "wave")
+    val delays = listOf(0, 100, 200, 300, 200, 100, 0)
+    val maxPercents = listOf(0.4f, 0.6f, 0.8f, 1.0f, 0.8f, 0.6f, 0.4f)
+
+    Row(
+        modifier = modifier
+            .height(72.dp)
+            .fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Protocol.entries.forEach { p ->
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = TouchTargetMin)
-                        .background(
-                            if (protocol == p) MaterialTheme.colorScheme.surfaceVariant
-                            else MaterialTheme.colorScheme.surface
-                        )
-                        .then(
-                            if (enabled) Modifier.clickable { onProtocolChange(p) }
-                            else Modifier.graphicsLayer { alpha = 0.5f }
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        p.label.uppercase(),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = if (protocol == p) MaterialTheme.colorScheme.onSurface
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+        maxPercents.forEachIndexed { index, maxPct ->
+            if (index > 0) Spacer(modifier = Modifier.width(6.dp))
+
+            val scale by transition.animateFloat(
+                initialValue = 0.15f,
+                targetValue = maxPct,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(1200),
+                    repeatMode = RepeatMode.Reverse,
+                    initialStartOffset = StartOffset(delays[index])
+                ),
+                label = "bar_$index"
+            )
+
+            val barHeight = when {
+                isActive -> 72.dp * scale
+                isSuccess -> 72.dp
+                else -> 2.dp
             }
+            val barColor = when {
+                isActive -> MaterialTheme.colorScheme.primary
+                isSuccess -> MaterialTheme.colorScheme.onSurface
+                else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+            }
+
+            Box(
+                modifier = Modifier
+                    .width(6.dp)
+                    .height(barHeight)
+                    .background(barColor)
+            )
         }
     }
 }
 
+/** Minimal underline-only text field. Rams: no decorative borders, just function. */
+@Composable
+private fun UnderlineTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    enabled: Boolean = true,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    onClear: (() -> Unit)? = null
+) {
+    val outlineColor = MaterialTheme.colorScheme.outline
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 20.dp)
+                    .then(if (onClear != null) Modifier.padding(end = 40.dp) else Modifier),
+                textStyle = TextStyle(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp,
+                    letterSpacing = 2.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                ),
+                singleLine = true,
+                enabled = enabled,
+                keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (value.isEmpty()) {
+                            Text(
+                                placeholder,
+                                style = TextStyle(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    letterSpacing = 2.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
+                                )
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
+            )
+            if (onClear != null) {
+                IconButton(
+                    onClick = onClear,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .size(TouchTargetMin)
+                ) {
+                    Text(
+                        "✕",
+                        style = TextStyle(
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
+                        )
+                    )
+                }
+            }
+        }
+        HorizontalDivider(thickness = 1.dp, color = outlineColor)
+    }
+}
+
+/** Key-value row for the receive readout panel. Monospace, uppercase, compact. */
+@Composable
+private fun ReadoutRow(
+    label: String,
+    value: String,
+    valueColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            label.uppercase(),
+            style = LabelUppercaseStyle.copy(fontFamily = FontFamily.Monospace),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+        )
+        Text(
+            value,
+            style = LabelUppercaseStyle.copy(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold),
+            color = valueColor
+        )
+    }
+}
+
 /**
- * @param initialMode "transmit" | "receive" | null.
- *   When "transmit" → preselects Broadcast; when "receive" → preselects Listen.
- *   When null (e.g. from Settings) → user chooses. Title is "SOUND TRANSFER" when initialMode set, else "DEAD DROP".
+ * Unified TRANSMIT / RECEIVE screen. Replaces QR codes with acoustic data transfer.
+ *
+ * TX mode: SOL Pay, SKR Tip, Cold Sign, cNFT Drop — each with purpose-built form.
+ * RX mode: hardware scanner aesthetic — band/mod metadata, readout panel, status icon.
+ *
+ * No protocol selector: always ULTRASONIC_FASTEST. Rams: "as little design as possible."
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -592,6 +737,9 @@ fun DeadDropScreen(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val app = context.applicationContext as SonicVaultApplication
+    val view = LocalView.current
+
+    /* ── ViewModels ── */
     val viewModel: DeadDropViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
         factory = object : androidx.lifecycle.ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -606,15 +754,7 @@ fun DeadDropScreen(
         }
     )
     val state by viewModel.state.collectAsState()
-    val protocol by viewModel.protocol.collectAsState()
-    
-    val defaultMode = when (initialMode) {
-        "transmit" -> "broadcast"
-        "receive" -> "listen"
-        else -> "broadcast"
-    }
-    var mode by remember(initialMode) { mutableStateOf(defaultMode) }
-    
+
     val hotViewModelFactory = remember(app) {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -624,6 +764,7 @@ fun DeadDropScreen(
     }
     val hotViewModel: SonicSafeHotViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = hotViewModelFactory)
     val hotState by hotViewModel.state.collectAsState()
+
     val coldViewModelFactory = remember(app) {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -633,315 +774,861 @@ fun DeadDropScreen(
     }
     val coldViewModel: SonicSafeViewModel = androidx.lifecycle.viewmodel.compose.viewModel(factory = coldViewModelFactory)
     val sonicRequestViewModel: SonicRequestViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
-    
 
-    DisposableEffect(Unit) {
-        onDispose { viewModel.stop() }
+    /* ── Local state ── */
+    var mode by remember(initialMode) { mutableStateOf(if (initialMode == "receive") "RX" else "TX") }
+    var txType by remember { mutableStateOf(TxType.SOL_PAY) }
+    var amount by remember { mutableStateOf("") }
+    var recipient by remember { mutableStateOf("") }
+    var memo by remember { mutableStateOf("") }
+    var eventId by remember { mutableStateOf("") }
+
+    /* ── Derived action state (unifies DeadDrop + SonicSafe VMs) ── */
+    val isIdle = when {
+        mode == "TX" && txType == TxType.COLD_SIGN ->
+            hotState is SonicSafeHotViewModel.State.Idle && state is DeadDropState.Idle
+        mode == "TX" -> state is DeadDropState.Idle
+        else -> state is DeadDropState.Idle
+    }
+    val isActive = when {
+        mode == "TX" && txType == TxType.COLD_SIGN ->
+            hotState is SonicSafeHotViewModel.State.Building ||
+            hotState is SonicSafeHotViewModel.State.Transmitting ||
+            hotState is SonicSafeHotViewModel.State.Listening
+        mode == "TX" -> state is DeadDropState.Broadcasting || state is DeadDropState.AwaitingEcdhResponse
+        else -> state is DeadDropState.Listening
+    }
+    val isSuccess = when {
+        mode == "TX" && txType == TxType.COLD_SIGN -> hotState is SonicSafeHotViewModel.State.Success
+        mode == "TX" -> state is DeadDropState.BroadcastComplete
+        else -> state is DeadDropState.Received ||
+                state is DeadDropState.ReceivedPaymentRequest ||
+                state is DeadDropState.ReceivedTxToSign
     }
 
-    /* Request RECORD_AUDIO when user taps RECEIVE; start listen only after grant. */
+    /* ── Permissions ── */
     val requestRecordAudio = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) viewModel.startListening(context.applicationContext)
     }
 
-    /* Intercept system back so both TopAppBar and hardware/gesture back stop the job. */
-    BackHandler { viewModel.stop(); onBack() }
+    BackHandler { viewModel.stop(); hotViewModel.reset(); onBack() }
+    DisposableEffect(Unit) { onDispose { viewModel.stop() } }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("SOUND TRANSFER", style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = {
-                    IconButton(
-                        onClick = { viewModel.stop(); onBack() },
-                        modifier = Modifier.sizeIn(minWidth = TouchTargetMin, minHeight = TouchTargetMin)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
+    val outlineColor = MaterialTheme.colorScheme.outline
+    val modeSelectorEnabled = isIdle
+
+    /* ═══════════════════════════════════════════════════════════════
+       LAYOUT: Toggle → Content (scrollable) → Visualizer → Button
+       ═══════════════════════════════════════════════════════════════ */
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+    ) {
+
+        /* ── TX / RX TOGGLE — full width, high contrast, no rounding ── */
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .drawBehind {
+                    drawLine(
+                        color = outlineColor,
+                        start = Offset(0f, size.height),
+                        end = Offset(size.width, size.height),
+                        strokeWidth = 1.dp.toPx()
+                    )
+                }
+        ) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(72.dp)
+                    .background(
+                        if (mode == "TX") MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.surface
+                    )
+                    .then(
+                        if (modeSelectorEnabled) Modifier.clickable { mode = "TX"; viewModel.stop() }
+                        else Modifier.graphicsLayer { alpha = 0.5f }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "TRANSMIT",
+                    style = LabelUppercaseStyle.copy(fontSize = 14.sp, letterSpacing = 3.sp, fontWeight = FontWeight.Bold),
+                    color = if (mode == "TX") MaterialTheme.colorScheme.surface
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                 )
-            )
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(72.dp)
+                    .background(
+                        if (mode == "RX") MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.surface
+                    )
+                    .then(
+                        if (modeSelectorEnabled) Modifier.clickable { mode = "RX"; viewModel.stop() }
+                        else Modifier.graphicsLayer { alpha = 0.5f }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "RECEIVE",
+                    style = LabelUppercaseStyle.copy(fontSize = 14.sp, letterSpacing = 3.sp, fontWeight = FontWeight.Bold),
+                    color = if (mode == "RX") MaterialTheme.colorScheme.surface
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                )
+            }
         }
-    ) { padding ->
-        val scrollState = rememberScrollState()
+
+        /* ── SCROLLABLE CONTENT ── */
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = Spacing.md.dp)
-                .verticalScroll(scrollState),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            /* Ma: breathing room between top bar and mode selector. */
-            Spacer(modifier = Modifier.height(Spacing.sm.dp))
-            /* Mode selector: sharp black/white — matches reference mockup. Disabled during transmit/receive. */
-            val modeSelectorEnabled = state !is DeadDropState.Broadcasting &&
-                state !is DeadDropState.AwaitingEcdhResponse &&
-                state !is DeadDropState.Listening &&
-                hotState !is SonicSafeHotViewModel.State.Transmitting
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RectangleShape,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                color = MaterialTheme.colorScheme.surface
-            ) {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 40.dp)
-                            .background(
-                                if (mode == "broadcast") MaterialTheme.colorScheme.onSurface
-                                else MaterialTheme.colorScheme.surface
-                            )
-                            .then(
-                                if (modeSelectorEnabled) Modifier.clickable { mode = "broadcast" }
-                                else Modifier.graphicsLayer { alpha = 0.5f }
+            if (mode == "TX") {
+                /* ═══════════════════ TRANSMIT MODE ═══════════════════ */
+
+                /* Hero amount / placeholder */
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    if (txType.hasAmount) {
+                        BasicTextField(
+                            value = amount,
+                            onValueChange = { amount = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            textStyle = TextStyle(
+                                fontSize = 64.sp,
+                                fontWeight = FontWeight.Light,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Center
                             ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "TRANSMIT",
-                            style = LabelUppercaseStyle,
-                            color = if (mode == "broadcast") MaterialTheme.colorScheme.surface
-                            else MaterialTheme.colorScheme.onSurfaceVariant
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            enabled = isIdle,
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (amount.isEmpty()) {
+                                        Text(
+                                            "0.00",
+                                            style = TextStyle(
+                                                fontSize = 64.sp,
+                                                fontWeight = FontWeight.Light,
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
+                                                textAlign = TextAlign.Center
+                                            )
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            }
                         )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 40.dp)
-                            .background(
-                                if (mode == "listen") MaterialTheme.colorScheme.onSurface
-                                else MaterialTheme.colorScheme.surface
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                txType.icon,
+                                style = TextStyle(fontSize = 14.sp, fontFamily = FontFamily.Monospace),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
-                            .then(
-                                if (modeSelectorEnabled) Modifier.clickable { mode = "listen" }
-                                else Modifier.graphicsLayer { alpha = 0.5f }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "TOTAL ${txType.unit}",
+                                style = LabelUppercaseStyle,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            )
+                        }
+                    } else {
                         Text(
-                            "RECEIVE",
+                            "---",
+                            style = TextStyle(
+                                fontSize = 64.sp,
+                                fontWeight = FontWeight.Light,
+                                fontFamily = FontFamily.Monospace,
+                                letterSpacing = 8.sp,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            txType.awaitingLabel.uppercase(),
                             style = LabelUppercaseStyle,
-                            color = if (mode == "listen") MaterialTheme.colorScheme.surface
-                            else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                         )
                     }
                 }
-            }
 
-            /* Handshake indicator — dot with rings. */
-            val connectionState = when (state) {
-                is DeadDropState.Idle -> ConnectionState.IDLE
-                is DeadDropState.Broadcasting -> ConnectionState.BROADCASTING
-                is DeadDropState.Listening -> ConnectionState.LISTENING
-                is DeadDropState.AwaitingEcdhResponse -> ConnectionState.BROADCASTING
-                is DeadDropState.BroadcastComplete -> ConnectionState.COMPLETE
-                is DeadDropState.Received -> ConnectionState.COMPLETE
-                is DeadDropState.ReceivedPaymentRequest -> ConnectionState.COMPLETE
-                is DeadDropState.ReceivedTxToSign -> ConnectionState.COMPLETE
-                is DeadDropState.Error -> ConnectionState.FAILED
-            }
-            SoundHandshakeIndicator(connectionState = connectionState)
-
-            when (val s = state) {
-                is DeadDropState.Idle -> {
-                    if (mode == "broadcast") {
-                        /* SEND SOL: single transmit view. Rams: one purpose, no mode switching. */
-                        Text(
-                            "Receiver: tap RECEIVE first. Then tap SEND. Keep phones close.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(Spacing.xs.dp))
-                        SendSolFormContent(
-                            viewModel = hotViewModel,
-                            compact = true,
-                            primaryButtonLabel = "SEND",
-                            contentAboveButton = {
-                                val protocolEnabled = state !is DeadDropState.Broadcasting &&
-                                    state !is DeadDropState.AwaitingEcdhResponse &&
-                                    hotState !is SonicSafeHotViewModel.State.Transmitting
-                                DeadDropProtocolRow(
-                                    protocol = protocol,
-                                    onProtocolChange = { viewModel.setProtocol(it) },
-                                    enabled = protocolEnabled
+                /* TX Type 2×2 grid: 1px gap = outline color showing through */
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(outlineColor)
+                ) {
+                    HorizontalDivider(thickness = 0.dp, color = outlineColor)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min)
+                    ) {
+                        TxType.entries.take(2).forEach { type ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(80.dp)
+                                    .background(
+                                        if (txType == type) MaterialTheme.colorScheme.surfaceContainer
+                                        else MaterialTheme.colorScheme.surface
+                                    )
+                                    .clickable(enabled = isIdle) { txType = type },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        type.icon,
+                                        style = TextStyle(fontSize = 20.sp, fontFamily = FontFamily.Monospace),
+                                        color = if (txType == type) MaterialTheme.colorScheme.onSurface
+                                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        type.label.uppercase(),
+                                        style = LabelUppercaseStyle,
+                                        color = if (txType == type) MaterialTheme.colorScheme.onSurface
+                                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                    )
+                                }
+                            }
+                            if (type == TxType.entries.take(2).first()) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(1.dp)
+                                        .fillMaxHeight()
+                                        .background(outlineColor)
                                 )
                             }
-                        )
-                    } else {
-                        /* Receive mode: clean, focused. Handshake + fountain default ON. */
-                        Spacer(modifier = Modifier.height(Spacing.md.dp))
-                        Text(
-                            "Tap RECEIVE first, then have sender tap SEND. Keep phones close.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(Spacing.md.dp))
-                        DeadDropProtocolRow(
-                            protocol = protocol,
-                            onProtocolChange = { viewModel.setProtocol(it) },
-                            enabled = state !is DeadDropState.Listening
-                        )
-                        Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                        Button(
-                            onClick = {
-                                when (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)) {
-                                    PackageManager.PERMISSION_GRANTED -> viewModel.startListening(context.applicationContext)
-                                    else -> requestRecordAudio.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                    HorizontalDivider(thickness = 1.dp, color = outlineColor)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min)
+                    ) {
+                        TxType.entries.drop(2).forEachIndexed { index, type ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(80.dp)
+                                    .background(
+                                        if (txType == type) MaterialTheme.colorScheme.surfaceContainer
+                                        else MaterialTheme.colorScheme.surface
+                                    )
+                                    .clickable(enabled = isIdle) { txType = type },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        type.icon,
+                                        style = TextStyle(fontSize = 20.sp, fontFamily = FontFamily.Monospace),
+                                        color = if (txType == type) MaterialTheme.colorScheme.onSurface
+                                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        type.label.uppercase(),
+                                        style = LabelUppercaseStyle,
+                                        color = if (txType == type) MaterialTheme.colorScheme.onSurface
+                                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                                    )
                                 }
-                            },
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                            shape = RectangleShape
-                        ) {
-                            Text("RECEIVE")
-                        }
-                    }
-                }
-
-                is DeadDropState.Broadcasting -> {
-                    StatusBar(status = "Broadcasting…", isActive = true, shimmer = true)
-                }
-
-                is DeadDropState.AwaitingEcdhResponse -> {
-                    StatusBar(status = "Waiting for receiver…", isActive = true, shimmer = true)
-                }
-
-                is DeadDropState.BroadcastComplete -> {
-                    SuccessCelebration(trigger = true)
-                    StatusBar(status = "Transfer complete. Verify code with receiver.")
-                    Spacer(modifier = Modifier.height(Spacing.xs.dp))
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow
-                    ) {
-                        Column(modifier = Modifier.padding(Spacing.md.dp)) {
-                            Text("VERIFY CODE", style = LabelUppercaseStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(modifier = Modifier.height(Spacing.xs.dp))
-                            Text(s.sas, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                    Button(onClick = { viewModel.reset() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("DONE")
-                    }
-                }
-
-                is DeadDropState.Listening -> {
-                    /* Rams: animation IS the UI — centered rings + shimmer label convey state. */
-                    Spacer(modifier = Modifier.height(Spacing.md.dp))
-                    StatusBar(status = "Listening…", isActive = true, shimmer = true)
-                    Spacer(modifier = Modifier.height(Spacing.md.dp))
-                    Button(
-                        onClick = { viewModel.stop() },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
-                        shape = RectangleShape
-                    ) {
-                        Text("STOP")
-                    }
-                }
-
-                is DeadDropState.Received -> {
-                    SuccessCelebration(trigger = true)
-                    StatusBar(status = "Received broadcast")
-                    Spacer(modifier = Modifier.height(Spacing.xs.dp))
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = MaterialTheme.shapes.medium,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow
-                    ) {
-                        Column(modifier = Modifier.padding(Spacing.md.dp)) {
-                            Text("RECEIVED", style = LabelUppercaseStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(modifier = Modifier.height(Spacing.xs.dp))
-                            Text(s.payload, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-                            s.sas?.let { sas ->
-                                Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                                Text("VERIFY CODE", style = LabelUppercaseStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(sas, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                            }
+                            if (index == 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(1.dp)
+                                        .fillMaxHeight()
+                                        .background(outlineColor)
+                                )
                             }
                         }
                     }
-                    Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                    Button(onClick = { viewModel.reset() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("DONE")
+                }
+
+                /* Dynamic form fields */
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.md.dp)
+                        .padding(top = Spacing.md.dp)
+                ) {
+                    if (txType.hasEventId) {
+                        UnderlineTextField(
+                            value = eventId,
+                            onValueChange = { eventId = it },
+                            placeholder = "EVENT DROP ID (e.g. MONOLITH_2026)",
+                            enabled = isIdle
+                        )
+                    }
+                    if (txType.hasRecipient) {
+                        UnderlineTextField(
+                            value = recipient,
+                            onValueChange = { recipient = it },
+                            placeholder = if (txType == TxType.COLD_SIGN) "UNSIGNED TX PAYLOAD" else "RECIPIENT ADDRESS",
+                            enabled = isIdle,
+                            onClear = if (recipient.isNotBlank() && isIdle) {
+                                { recipient = "" }
+                            } else null
+                        )
+                    }
+                    if (txType.hasMemo) {
+                        UnderlineTextField(
+                            value = memo,
+                            onValueChange = { memo = it },
+                            placeholder = "MEMO (OPTIONAL)",
+                            enabled = isIdle
+                        )
                     }
                 }
 
-                is DeadDropState.ReceivedPaymentRequest -> {
-                    LaunchedEffect(s) {
-                        sonicRequestViewModel.setReceivedUri(s.uri)
+                /* State-dependent TX feedback */
+                if (txType == TxType.COLD_SIGN) {
+                    when (val hs = hotState) {
+                        is SonicSafeHotViewModel.State.Building,
+                        is SonicSafeHotViewModel.State.Transmitting,
+                        is SonicSafeHotViewModel.State.Listening -> {
+                            val statusText = when (hs) {
+                                is SonicSafeHotViewModel.State.Building -> "Building transaction…"
+                                is SonicSafeHotViewModel.State.Transmitting -> "Transmitting to cold signer…"
+                                is SonicSafeHotViewModel.State.Listening -> "Waiting for signed TX…"
+                                else -> ""
+                            }
+                            Spacer(modifier = Modifier.height(Spacing.md.dp))
+                            Text(
+                                statusText,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md.dp)
+                            )
+                        }
+                        is SonicSafeHotViewModel.State.Success -> {
+                            LaunchedEffect(hs) { view.performHapticFeedback(HapticFeedbackConstantsCompat.CONFIRM) }
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(Spacing.md.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(Spacing.xs.dp)
+                            ) {
+                                Text("Broadcast successful", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                                Text("Sig: ${hs.signature.take(24)}…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(modifier = Modifier.height(Spacing.xs.dp))
+                                OutlinedButton(onClick = {
+                                    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(hs.explorerUrl)))
+                                }) { Text("VIEW IN EXPLORER") }
+                                OutlinedButton(onClick = { hotViewModel.reset() }) { Text("DONE") }
+                            }
+                        }
+                        is SonicSafeHotViewModel.State.Error -> {
+                            LaunchedEffect(hs) { view.performHapticFeedback(HapticFeedbackConstantsCompat.REJECT) }
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(Spacing.md.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(hs.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+                                Spacer(modifier = Modifier.height(Spacing.sm.dp))
+                                OutlinedButton(onClick = { hotViewModel.reset() }) { Text("TRY AGAIN") }
+                            }
+                        }
+                        else -> {}
                     }
-                    SuccessCelebration(trigger = true)
-                    StatusBar(status = "Payment request received")
-                    Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-                    var showPaymentSheet by remember(s) { mutableStateOf(true) }
-                    if (showPaymentSheet) {
-                        ModalBottomSheet(
-                            onDismissRequest = {
-                                showPaymentSheet = false
-                                sonicRequestViewModel.decline()
-                                viewModel.reset()
-                            },
-                            sheetState = sheetState
-                        ) {
-                            SonicRequestSheet(
-                                viewModel = sonicRequestViewModel,
-                                sheetState = sheetState,
-                                onDismiss = {
-                                    showPaymentSheet = false
-                                    viewModel.reset()
+                } else {
+                    when (val s = state) {
+                        is DeadDropState.BroadcastComplete -> {
+                            LaunchedEffect(s) { view.performHapticFeedback(HapticFeedbackConstantsCompat.CONFIRM) }
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(Spacing.md.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text("Transfer complete", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.height(Spacing.sm.dp))
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RectangleShape,
+                                    border = BorderStroke(1.dp, outlineColor),
+                                    color = MaterialTheme.colorScheme.surfaceContainerLow
+                                ) {
+                                    Column(modifier = Modifier.padding(Spacing.md.dp)) {
+                                        Text("VERIFY CODE", style = LabelUppercaseStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Spacer(modifier = Modifier.height(Spacing.xs.dp))
+                                        Text(s.sas, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.primary)
+                                    }
                                 }
+                                Spacer(modifier = Modifier.height(Spacing.sm.dp))
+                                OutlinedButton(onClick = { viewModel.reset() }, modifier = Modifier.fillMaxWidth()) { Text("DONE") }
+                            }
+                        }
+                        is DeadDropState.Broadcasting, is DeadDropState.AwaitingEcdhResponse -> {
+                            Spacer(modifier = Modifier.height(Spacing.md.dp))
+                            Text(
+                                if (state is DeadDropState.AwaitingEcdhResponse) "Waiting for receiver…" else "Broadcasting…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md.dp)
+                            )
+                        }
+                        is DeadDropState.Error -> {
+                            LaunchedEffect(s) { view.performHapticFeedback(HapticFeedbackConstantsCompat.REJECT) }
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(Spacing.md.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(s.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+                                Spacer(modifier = Modifier.height(Spacing.sm.dp))
+                                OutlinedButton(onClick = { viewModel.reset() }) { Text("TRY AGAIN") }
+                            }
+                        }
+                        else -> {}
+                    }
+                }
+
+            } else {
+                /* ═══════════════════ RECEIVE MODE ═══════════════════ */
+
+                /* Band / Mod metadata */
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.md.dp, vertical = Spacing.md.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "BAND: 15-19.5 KHZ",
+                        style = LabelUppercaseStyle.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    )
+                    Text(
+                        "MOD: MFSK",
+                        style = LabelUppercaseStyle.copy(fontFamily = FontFamily.Monospace),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    )
+                }
+
+                when (val s = state) {
+                    is DeadDropState.Idle -> {
+                        /* Status icon + label */
+                        Spacer(modifier = Modifier.height(Spacing.xl.dp))
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .border(2.dp, outlineColor.copy(alpha = 0.3f), RectangleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.Mic,
+                                    contentDescription = "Microphone",
+                                    modifier = Modifier.size(24.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(Spacing.lg.dp))
+                            Text(
+                                "SCANNING",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    letterSpacing = 3.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+
+                        /* Readout panel */
+                        Spacer(modifier = Modifier.height(Spacing.lg.dp))
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = Spacing.xl.dp),
+                            shape = RectangleShape,
+                            border = BorderStroke(1.dp, outlineColor),
+                            color = MaterialTheme.colorScheme.surfaceContainer
+                        ) {
+                            Column(modifier = Modifier.padding(Spacing.sm.dp)) {
+                                ReadoutRow("Status", "AWAITING SIGNAL")
+                                HorizontalDivider(thickness = 1.dp, color = outlineColor.copy(alpha = 0.1f))
+                                ReadoutRow("Protocol", "GGWAVE / RS-ECC")
+                                HorizontalDivider(thickness = 1.dp, color = outlineColor.copy(alpha = 0.1f))
+                                ReadoutRow("Buffer", "0%")
+                            }
+                        }
+                    }
+
+                    is DeadDropState.Listening -> {
+                        Spacer(modifier = Modifier.height(Spacing.xl.dp))
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .border(2.dp, MaterialTheme.colorScheme.primary, RectangleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.Mic,
+                                    contentDescription = "Listening",
+                                    modifier = Modifier.size(24.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(Spacing.lg.dp))
+                            Text(
+                                "CARRIER LOCKED",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    letterSpacing = 3.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(Spacing.lg.dp))
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = Spacing.xl.dp),
+                            shape = RectangleShape,
+                            border = BorderStroke(1.dp, outlineColor),
+                            color = MaterialTheme.colorScheme.surfaceContainer
+                        ) {
+                            Column(modifier = Modifier.padding(Spacing.sm.dp)) {
+                                ReadoutRow("Status", "RECEIVING…", MaterialTheme.colorScheme.primary)
+                                HorizontalDivider(thickness = 1.dp, color = outlineColor.copy(alpha = 0.1f))
+                                ReadoutRow("Protocol", "GGWAVE / RS-ECC")
+                                HorizontalDivider(thickness = 1.dp, color = outlineColor.copy(alpha = 0.1f))
+                                ReadoutRow("Buffer", "–")
+                            }
+                        }
+                    }
+
+                    is DeadDropState.Received -> {
+                        LaunchedEffect(s) { view.performHapticFeedback(HapticFeedbackConstantsCompat.CONFIRM) }
+                        Spacer(modifier = Modifier.height(Spacing.xl.dp))
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .border(2.dp, MaterialTheme.colorScheme.onSurface, RectangleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = "Decoded",
+                                    modifier = Modifier.size(24.dp),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(Spacing.lg.dp))
+                            Text(
+                                "PAYLOAD DECODED",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    letterSpacing = 3.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+
+                        /* Readout panel — complete */
+                        Spacer(modifier = Modifier.height(Spacing.lg.dp))
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = Spacing.xl.dp),
+                            shape = RectangleShape,
+                            border = BorderStroke(1.dp, outlineColor),
+                            color = MaterialTheme.colorScheme.surfaceContainer
+                        ) {
+                            Column(modifier = Modifier.padding(Spacing.sm.dp)) {
+                                ReadoutRow("Status", "COMPLETE", MaterialTheme.colorScheme.onSurface)
+                                HorizontalDivider(thickness = 1.dp, color = outlineColor.copy(alpha = 0.1f))
+                                ReadoutRow("Protocol", "GGWAVE / RS-ECC")
+                                HorizontalDivider(thickness = 1.dp, color = outlineColor.copy(alpha = 0.1f))
+                                ReadoutRow("Buffer", "100%")
+                            }
+                        }
+
+                        /* Decoded payload */
+                        Spacer(modifier = Modifier.height(Spacing.md.dp))
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = Spacing.md.dp),
+                            shape = RectangleShape,
+                            border = BorderStroke(1.dp, outlineColor),
+                            color = MaterialTheme.colorScheme.surfaceContainerLow
+                        ) {
+                            Column(modifier = Modifier.padding(Spacing.md.dp)) {
+                                Text("RECEIVED", style = LabelUppercaseStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Spacer(modifier = Modifier.height(Spacing.xs.dp))
+                                Text(s.payload, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+                                s.sas?.let { sas ->
+                                    Spacer(modifier = Modifier.height(Spacing.sm.dp))
+                                    Text("VERIFY CODE", style = LabelUppercaseStyle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(sas, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
+                                }
+                            }
+                        }
+                    }
+
+                    is DeadDropState.ReceivedPaymentRequest -> {
+                        LaunchedEffect(s) {
+                            sonicRequestViewModel.setReceivedUri(s.uri)
+                            view.performHapticFeedback(HapticFeedbackConstantsCompat.CONFIRM)
+                        }
+                        Spacer(modifier = Modifier.height(Spacing.xl.dp))
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .border(2.dp, MaterialTheme.colorScheme.onSurface, RectangleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Filled.Check, contentDescription = "Decoded", modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurface)
+                            }
+                            Spacer(modifier = Modifier.height(Spacing.lg.dp))
+                            Text(
+                                "PAYMENT REQUEST",
+                                style = MaterialTheme.typography.titleLarge.copy(letterSpacing = 3.sp, fontWeight = FontWeight.Bold)
+                            )
+                        }
+
+                        /* Payment approval bottom sheet */
+                        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                        var showPaymentSheet by remember(s) { mutableStateOf(true) }
+                        if (showPaymentSheet) {
+                            ModalBottomSheet(
+                                onDismissRequest = {
+                                    showPaymentSheet = false
+                                    sonicRequestViewModel.decline()
+                                    viewModel.reset()
+                                },
+                                sheetState = sheetState
+                            ) {
+                                SonicRequestSheet(
+                                    viewModel = sonicRequestViewModel,
+                                    sheetState = sheetState,
+                                    onDismiss = {
+                                        showPaymentSheet = false
+                                        viewModel.reset()
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    is DeadDropState.ReceivedTxToSign -> {
+                        LaunchedEffect(s) {
+                            coldViewModel.setReceivedTx(s.txBytes)
+                            view.performHapticFeedback(HapticFeedbackConstantsCompat.CONFIRM)
+                        }
+                        Spacer(modifier = Modifier.height(Spacing.md.dp))
+                        Text(
+                            "TRANSACTION RECEIVED",
+                            style = MaterialTheme.typography.titleLarge.copy(letterSpacing = 3.sp, fontWeight = FontWeight.Bold),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(Spacing.sm.dp))
+                        ColdSignerScreen(
+                            viewModel = coldViewModel,
+                            onBack = { viewModel.reset() },
+                            embedded = true
+                        )
+                    }
+
+                    is DeadDropState.Error -> {
+                        LaunchedEffect(s) { view.performHapticFeedback(HapticFeedbackConstantsCompat.REJECT) }
+                        Spacer(modifier = Modifier.height(Spacing.xl.dp))
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .border(2.dp, MaterialTheme.colorScheme.error, RectangleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("✕", style = TextStyle(fontSize = 24.sp, color = MaterialTheme.colorScheme.error))
+                            }
+                            Spacer(modifier = Modifier.height(Spacing.lg.dp))
+                            Text(
+                                s.message,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = Spacing.md.dp)
                             )
                         }
                     }
-                }
 
-                is DeadDropState.ReceivedTxToSign -> {
-                    LaunchedEffect(s) {
-                        coldViewModel.setReceivedTx(s.txBytes)
-                    }
-                    SuccessCelebration(trigger = true)
-                    StatusBar(status = "Transaction received")
-                    Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                    ColdSignerScreen(
-                        viewModel = coldViewModel,
-                        onBack = { viewModel.reset() },
-                        embedded = true
-                    )
-                    Text(
-                        text = "Listen for messages or payments instead",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable {
-                            coldViewModel.reset()
-                            viewModel.reset()
-                        }
-                    )
-                }
-
-                is DeadDropState.Error -> {
-                    StatusBar(status = s.message)
-                    Spacer(modifier = Modifier.height(Spacing.xs.dp))
-                    Button(onClick = { viewModel.reset() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("TRY AGAIN")
-                    }
+                    else -> {}
                 }
             }
 
-            Spacer(modifier = Modifier.height(Spacing.sm.dp))
+            Spacer(modifier = Modifier.height(Spacing.md.dp))
+        }
+
+        /* ── ACOUSTIC VISUALIZER ── */
+        AcousticVisualizer(
+            isActive = isActive,
+            isSuccess = isSuccess,
+            modifier = Modifier.padding(bottom = Spacing.md.dp)
+        )
+
+        /* ── BOTTOM ACTION BUTTON ── */
+        val canInitiate = isIdle && when {
+            mode == "RX" -> true
+            txType == TxType.SOL_PAY || txType == TxType.SKR_TIP -> amount.isNotBlank() && recipient.isNotBlank()
+            txType == TxType.COLD_SIGN -> recipient.isNotBlank() && amount.isNotBlank()
+            txType == TxType.CNFT_DROP -> eventId.isNotBlank()
+            else -> false
+        }
+        val buttonEnabled = canInitiate || isActive || isSuccess
+        val buttonLabel = when {
+            isSuccess -> if (mode == "TX") "SENT" else "DECODED"
+            isActive -> if (mode == "RX") "STOP" else "TRANSMITTING…"
+            else -> if (mode == "TX") "INITIATE" else "START LISTENER"
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.md.dp)
+                .padding(bottom = Spacing.md.dp)
+        ) {
+            Button(
+                onClick = {
+                    when {
+                        isSuccess -> {
+                            viewModel.reset()
+                            hotViewModel.reset()
+                            coldViewModel.reset()
+                        }
+                        isActive && mode == "RX" -> viewModel.stop()
+                        isActive -> {} /* TX in progress: no-op */
+                        mode == "RX" -> {
+                            when (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)) {
+                                PackageManager.PERMISSION_GRANTED -> viewModel.startListening(context.applicationContext)
+                                else -> requestRecordAudio.launch(Manifest.permission.RECORD_AUDIO)
+                            }
+                        }
+                        mode == "TX" -> {
+                            when (txType) {
+                                TxType.SOL_PAY -> {
+                                    val ts = System.currentTimeMillis() / 1000
+                                    val fullMemo = listOfNotNull(
+                                        memo.ifBlank { null }, "ts:$ts"
+                                    ).joinToString(" ")
+                                    val uri = SolanaPayUri(
+                                        recipient = recipient.trim(),
+                                        amount = amount.toDoubleOrNull(),
+                                        label = "SonicVault",
+                                        message = null,
+                                        memo = fullMemo
+                                    )
+                                    viewModel.broadcast(context, String(uri.encode(), Charsets.UTF_8))
+                                }
+                                TxType.SKR_TIP -> {
+                                    val ts = System.currentTimeMillis() / 1000
+                                    val fullMemo = listOfNotNull(
+                                        memo.ifBlank { null }, "ts:$ts"
+                                    ).joinToString(" ")
+                                    val uri = SolanaPayUri(
+                                        recipient = recipient.trim(),
+                                        amount = amount.toDoubleOrNull(),
+                                        label = "SonicVault SKR",
+                                        message = null,
+                                        memo = fullMemo,
+                                        splToken = "SKRepMQET9dGvadwUiEmVi1pcSHaH8eak7FXbp6FTQ5R"
+                                    )
+                                    viewModel.broadcast(context, String(uri.encode(), Charsets.UTF_8))
+                                }
+                                TxType.COLD_SIGN -> {
+                                    val mainActivity = context as? com.sonicvault.app.MainActivity
+                                    if (mainActivity != null && recipient.isNotBlank()) {
+                                        val lamports = ((amount.toDoubleOrNull() ?: 0.0) * 1_000_000_000).toLong()
+                                        if (lamports > 0) {
+                                            hotViewModel.sendForSigning(
+                                                sender = mainActivity.activityResultSender,
+                                                appContext = context.applicationContext,
+                                                recipient = recipient.trim(),
+                                                lamports = lamports
+                                            )
+                                        }
+                                    }
+                                }
+                                TxType.CNFT_DROP -> {
+                                    viewModel.broadcast(context, eventId.trim())
+                                }
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp),
+                shape = RectangleShape,
+                enabled = buttonEnabled,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = when {
+                        isSuccess -> MaterialTheme.colorScheme.onSurface
+                        isActive -> MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                        else -> MaterialTheme.colorScheme.onSurface
+                    },
+                    contentColor = when {
+                        isSuccess -> MaterialTheme.colorScheme.surface
+                        isActive -> MaterialTheme.colorScheme.primary
+                        else -> MaterialTheme.colorScheme.surface
+                    },
+                    disabledContainerColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f),
+                    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+                )
+            ) {
+                Text(
+                    buttonLabel,
+                    style = LabelUppercaseStyle.copy(fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
+                )
+            }
         }
     }
 }

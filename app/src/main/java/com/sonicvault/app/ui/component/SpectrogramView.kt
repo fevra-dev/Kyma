@@ -149,7 +149,7 @@ fun SpectrogramViewWithLabels(
             BandLabel("0-8k", MaterialTheme.colorScheme.onSurfaceVariant)
             BandLabel("8-11k", MaterialTheme.colorScheme.tertiary)
             BandLabel("11-18k", MaterialTheme.colorScheme.secondary)
-            BandLabel("18-22k", if (isTransmitting) Color(0xFFE53935) else MaterialTheme.colorScheme.primary)
+            BandLabel("15-19k", if (isTransmitting) Color(0xFFE53935) else MaterialTheme.colorScheme.primary)
         }
     }
 }

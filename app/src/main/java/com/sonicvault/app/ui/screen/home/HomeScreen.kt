@@ -1,5 +1,7 @@
 package com.sonicvault.app.ui.screen.home
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,20 +18,22 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.sonicvault.app.data.preferences.UserPreferences
 import com.sonicvault.app.ui.component.AudioVaultIcon
@@ -44,9 +48,10 @@ import com.sonicvault.app.ui.theme.Spacing
 import androidx.compose.runtime.remember
 
 /**
- * Home: branding (icon, title, tagline), 4 flat action buttons (BACKUP, RESTORE, TRANSMIT, RECEIVE).
+ * Home: TRANSMIT/RECEIVE as primary actions (acoustic transactions),
+ * BACKUP/RESTORE as secondary under "VAULT INFRASTRUCTURE" divider.
  * Rams: useful, understandable, unobtrusive. Less, but better.
- * Japanese Ma: generous spacing; Kanso: essential elements; Human scale: proportions for touch.
+ * Ma: generous spacing between tiers; Kanso: clear hierarchy.
  */
 @Composable
 fun HomeScreen(
@@ -62,15 +67,10 @@ fun HomeScreen(
         formatTimeAgo(userPrefs.lastBackupTimestamp)
     }
     val isEmulator = isEmulator()
-    /** Root detection: check once per composition; cached in remember. */
     val rootResult = remember { RootDetector.check() }
     val padH = Spacing.sm.dp
     val padV = Spacing.md.dp
 
-    /**
-     * BoxWithConstraints + heightIn(min) pattern: centers content when it fits the screen,
-     * enables scrolling when content overflows (large font / display sizes).
-     */
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -89,7 +89,6 @@ fun HomeScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                /* Emulator banner: mic and full features work best on real device */
                 if (isEmulator) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -105,7 +104,6 @@ fun HomeScreen(
                     }
                     Spacer(modifier = Modifier.height(Spacing.sm.dp))
                 }
-                /* Root/Magisk detection warning. Rams: honest — user deserves to know security is compromised. */
                 if (rootResult.isRooted) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -122,9 +120,9 @@ fun HomeScreen(
                     }
                     Spacer(modifier = Modifier.height(Spacing.sm.dp))
                 }
+
                 AudioVaultIcon(modifier = Modifier)
                 Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                /* Brand: KYMA. Work Sans SemiBold reinforces code/security vibe. */
                 Text(
                     text = "KYMA",
                     style = HeadlineLargeStyle,
@@ -135,97 +133,145 @@ fun HomeScreen(
                     style = LabelUppercaseStyle,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                /* Stickiness signal: last backup timestamp. Rams: honest feedback. */
+                Spacer(modifier = Modifier.height(Spacing.xl.dp))
+
+                /* ── Primary actions: TRANSMIT / RECEIVE ── tall tappable cards ── */
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 160.dp)
+                            .clickable(onClick = onTransmitSound),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(Spacing.md.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            IconTransmit(
+                                size = 48.dp,
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(Spacing.sm.dp))
+                            Text("TRANSMIT", style = LabelUppercaseStyle)
+                        }
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 160.dp)
+                            .clickable(onClick = onReceiveSound),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(Spacing.md.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            IconReceive(
+                                size = 48.dp,
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(Spacing.sm.dp))
+                            Text("RECEIVE", style = LabelUppercaseStyle)
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(Spacing.xl.dp))
+
+                /* ── Divider: VAULT INFRASTRUCTURE ── */
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HorizontalDivider(
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                    )
+                    Text(
+                        text = "VAULT INFRASTRUCTURE",
+                        style = LabelUppercaseStyle,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = Spacing.sm.dp),
+                        textAlign = TextAlign.Center
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(Spacing.sm.dp))
+
+                /* ── Last backup status ── */
                 Text(
                     text = if (userPrefs.lastBackupTimestamp > 0) "Last backup: $lastBackupText" else "No backups yet",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = Spacing.sm.dp)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Spacer(modifier = Modifier.height(Spacing.xl.dp))
 
-                /* 2x2 action grid: BACKUP, RESTORE, TRANSMIT, RECEIVE. Rams: understandable, as little design as possible. */
-                val buttonMod = Modifier
-                    .weight(1f)
-                    .heightIn(min = 56.dp)
-                val soundButtonMod = Modifier
-                    .weight(1f)
-                    .heightIn(min = 56.dp)
-                Column(
+                Spacer(modifier = Modifier.height(Spacing.sm.dp))
+
+                /* ── Secondary actions: BACKUP / RESTORE ── subdued text buttons ── */
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.sm.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp)
+                    TextButton(
+                        onClick = onCreateBackup,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 44.dp)
                     ) {
-                        Button(
-                            onClick = onCreateBackup,
-                            modifier = buttonMod,
-                            shape = MaterialTheme.shapes.medium,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            )
-                        ) {
-                            Text("BACKUP", style = LabelUppercaseStyle)
-                        }
-                        Button(
-                            onClick = onRecover,
-                            modifier = buttonMod,
-                            shape = MaterialTheme.shapes.medium,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
-                            )
-                        ) {
-                            Text("RESTORE", style = LabelUppercaseStyle)
-                        }
+                        Icon(
+                            Icons.Outlined.FileUpload,
+                            contentDescription = null,
+                            modifier = Modifier.sizeIn(maxWidth = 18.dp, maxHeight = 18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(Spacing.xs.dp))
+                        Text(
+                            "BACKUP",
+                            style = LabelUppercaseStyle,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp)
+                    TextButton(
+                        onClick = onRecover,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 44.dp)
                     ) {
-                        OutlinedButton(
-                            onClick = onTransmitSound,
-                            modifier = soundButtonMod,
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                IconTransmit(
-                                    size = 24.dp,
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text("TRANSMIT", style = LabelUppercaseStyle)
-                            }
-                        }
-                        OutlinedButton(
-                            onClick = onReceiveSound,
-                            modifier = soundButtonMod,
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                IconReceive(
-                                    size = 24.dp,
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text("RECEIVE", style = LabelUppercaseStyle)
-                            }
-                        }
+                        Icon(
+                            Icons.Outlined.FileDownload,
+                            contentDescription = null,
+                            modifier = Modifier.sizeIn(maxWidth = 18.dp, maxHeight = 18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(Spacing.xs.dp))
+                        Text(
+                            "RESTORE",
+                            style = LabelUppercaseStyle,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
         }
 
-        /** Settings: pinned to bottom, stays visible even when content scrolls. 44dp touch target for accessibility. */
         IconButton(
             onClick = onSettings,
             modifier = Modifier
