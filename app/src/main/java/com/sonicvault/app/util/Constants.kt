@@ -14,6 +14,12 @@ object Constants {
     /** Minimum cover audio duration in seconds to ensure capacity for payload + safety margin. */
     const val MIN_COVER_DURATION_SECONDS = 5
 
+    /** AES-256 key size in bytes. */
+    const val AES_KEY_SIZE = 32
+
+    /** AES-GCM authentication tag length in bytes. */
+    const val GCM_TAG_LENGTH = 16
+
     /** AES-GCM IV length in bytes. */
     const val GCM_IV_LENGTH = 12
 

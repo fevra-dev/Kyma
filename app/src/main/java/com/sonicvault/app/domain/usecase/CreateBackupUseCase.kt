@@ -49,7 +49,7 @@ class CreateBackupUseCase(
     companion object {
         /** Minimum password length for password-mode encryption (cross-device recovery). */
         const val MIN_PASSWORD_LENGTH = 8
-        /** Minimum duress password length. */
-        const val MIN_DURESS_PASSWORD_LENGTH = 6
+        /** Minimum duress password length (matches main password policy). */
+        const val MIN_DURESS_PASSWORD_LENGTH = 8
     }
 }

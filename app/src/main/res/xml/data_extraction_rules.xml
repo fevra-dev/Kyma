@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Data extraction rules for API 31+ (Android 12+).
+  Disables cloud backup and device-to-device transfer entirely.
+  SonicVault stores cryptographic keys and seed data that must never leave the device.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+    </device-transfer>
+</data-extraction-rules>

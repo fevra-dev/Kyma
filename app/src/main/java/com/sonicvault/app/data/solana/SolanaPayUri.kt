@@ -1,9 +1,9 @@
 package com.sonicvault.app.data.solana
 
 import com.sonicvault.app.logging.SonicVaultLogger
-import com.solana.core.HotAccount
 import java.net.URLDecoder
 import java.net.URLEncoder
+import java.security.SecureRandom
 
 /**
  * Solana Pay transfer request URI per spec: solana:<recipient>?amount=&spl-token=&reference=&label=&message=&memo=
@@ -33,7 +33,13 @@ data class SolanaPayUri(
      */
     fun encode(): ByteArray {
         val refs = reference?.filter { it.isNotBlank() }.orEmpty()
-            .ifEmpty { listOf(HotAccount().publicKey.toBase58()) }
+            .ifEmpty {
+                // Generate a random 32-byte reference key instead of creating a HotAccount
+                // (which leaks an Ed25519 private key that can never be wiped)
+                val randomBytes = ByteArray(32)
+                SecureRandom().nextBytes(randomBytes)
+                listOf(org.bitcoinj.core.Base58.encode(randomBytes))
+            }
         val uri = buildString {
             append("solana:$recipient")
             val params = mutableListOf<String>()

@@ -20,16 +20,29 @@ class NonceAccountManager(
     var nonceAccountPubkey: String? = null
 
     /**
-     * Fetches current nonce or recent blockhash.
+     * Fetches current nonce value from on-chain nonce account, or falls back to recent blockhash.
      *
-     * When nonce account is configured, getAccountInfo would return nonce data.
-     * For MVP: always use getLatestBlockhash. Full nonce support requires RPC getAccountInfo.
+     * When [nonceAccountPubkey] is set, queries the nonce account via getAccountInfo and
+     * extracts the stored nonce value (bytes 40-72). This gives transactions unlimited
+     * validity — critical for acoustic cold signing where the round-trip is 15-30s.
      *
-     * @return blockhash/nonce string for transaction, or null on failure
+     * @return nonce value or blockhash string for transaction, or null on failure
      */
     suspend fun fetchCurrentNonce(): String? = withContext(Dispatchers.IO) {
+        val pubkey = nonceAccountPubkey
+        if (pubkey != null) {
+            val nonce = rpcClient.getNonce(pubkey)
+            if (nonce != null) {
+                SonicVaultLogger.i("[NonceAccountMgr] fetched durable nonce from ${pubkey.take(8)}...")
+                return@withContext nonce
+            }
+            SonicVaultLogger.w("[NonceAccountMgr] nonce account query failed, falling back to blockhash")
+        }
         rpcClient.getLatestBlockhash()?.blockhash
     }
+
+    /** @return true if a durable nonce account is configured and will be used for TX construction. */
+    val isDurableNonceConfigured: Boolean get() = nonceAccountPubkey != null
 
     companion object {
         const val NONCE_ACCOUNT_LENGTH = 80

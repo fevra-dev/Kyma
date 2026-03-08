@@ -1,6 +1,7 @@
 package com.sonicvault.app.util
 
 import com.sonicvault.app.data.crypto.NativeSeedHandler
+import com.sonicvault.app.logging.SonicVaultLogger
 
 /**
  * Secure wipe of sensitive data using native volatile memset (NDK).
@@ -16,7 +17,7 @@ fun ByteArray.wipe() {
     try {
         NativeSeedHandler.secureWipe(this)
     } catch (_: UnsatisfiedLinkError) {
-        /* Fallback: JVM wipe if native lib not loaded (e.g. unit tests). */
+        SonicVaultLogger.w("[SecureWipe] native library unavailable, using JVM fallback")
         fill(0xFF.toByte())
         fill(0x00)
     }
@@ -30,6 +31,7 @@ fun CharArray.wipe() {
     try {
         NativeSeedHandler.secureWipeChar(this)
     } catch (_: UnsatisfiedLinkError) {
+        SonicVaultLogger.w("[SecureWipe] native library unavailable, using JVM fallback (CharArray)")
         fill('\u0000')
     }
 }
@@ -42,6 +44,7 @@ fun ShortArray.wipe() {
     try {
         NativeSeedHandler.secureWipeShort(this)
     } catch (_: UnsatisfiedLinkError) {
+        SonicVaultLogger.w("[SecureWipe] native library unavailable, using JVM fallback (ShortArray)")
         fill(0)
     }
 }

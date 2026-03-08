@@ -2,6 +2,7 @@ package com.sonicvault.app.data.crypto
 
 import com.sonicvault.app.logging.SonicVaultLogger
 import com.sonicvault.app.util.Constants
+import com.sonicvault.app.util.wipe
 import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -24,15 +25,17 @@ object AesGcmPasswordCrypto {
             val iv = ByteArray(Constants.GCM_IV_LENGTH)
             SecureRandom().nextBytes(iv)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            /** SecretKeySpec copies the key internally — but we still rely on caller to wipe [key]. */
             val keySpec = SecretKeySpec(key, "AES")
             val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
             cipher.init(Cipher.ENCRYPT_MODE, keySpec, gcmSpec)
             val ciphertext = cipher.doFinal(plaintext)
             EncryptedPayload(iv, ciphertext)
-        } catch (e: Exception) {
-            SonicVaultLogger.e("[AesGcmPasswordCrypto] encrypt failed", e)
+        } catch (_: Exception) {
+            SonicVaultLogger.e("[AesGcmPasswordCrypto] encrypt failed")
             null
+        } finally {
+            key.wipe()
+            plaintext.wipe()
         }
     }
 
@@ -46,9 +49,11 @@ object AesGcmPasswordCrypto {
             val gcmSpec = GCMParameterSpec(GCM_TAG_LENGTH_BITS, payload.iv)
             cipher.init(Cipher.DECRYPT_MODE, keySpec, gcmSpec)
             cipher.doFinal(payload.ciphertextWithTag)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             SonicVaultLogger.d("[AesGcmPasswordCrypto] decrypt failed (wrong key or tampered)")
             null
+        } finally {
+            key.wipe()
         }
     }
 }

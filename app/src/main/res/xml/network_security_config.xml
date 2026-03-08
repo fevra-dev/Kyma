@@ -17,14 +17,20 @@
     <domain-config>
         <domain includeSubdomains="true">googleapis.com</domain>
         <pin-set expiration="2027-01-01">
+            <!-- Primary: leaf certificate pin -->
             <pin digest="SHA-256">hxqRlPTu1bMS/0DITB1SSu0vd4u/8l8TjPgfaAp63Gc=</pin>
+            <!-- Backup: intermediate CA pin for certificate rotation -->
+            <pin digest="SHA-256">YZPgTZ+woNCCCIW3LH2CxQeLzB/1m42QcCTBSdgayjs=</pin>
         </pin-set>
     </domain-config>
     <!-- World Time API: NTP fallback over HTTPS -->
     <domain-config>
         <domain includeSubdomains="false">worldtimeapi.org</domain>
         <pin-set expiration="2027-01-01">
+            <!-- Primary: leaf certificate pin -->
             <pin digest="SHA-256">jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=</pin>
+            <!-- Backup: intermediate CA pin for certificate rotation -->
+            <pin digest="SHA-256">C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=</pin>
         </pin-set>
     </domain-config>
 </network-security-config>

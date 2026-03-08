@@ -1,12 +1,14 @@
 package com.sonicvault.app.data.deadrop
 
+import com.google.crypto.tink.subtle.Hkdf
+import com.sonicvault.app.data.crypto.Argon2KeyDerivation
 import com.sonicvault.app.logging.SonicVaultLogger
 import com.sonicvault.app.util.wipe
 import java.security.KeyPair
 import java.security.KeyPairGenerator
+import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.Cipher
-import javax.crypto.KeyAgreement
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
@@ -49,28 +51,24 @@ object DeadDropEncryptor {
     /**
      * Encrypts payload for Dead Drop broadcast.
      *
+     * Broadcast mode: key is deterministically derived from the ephemeral public key via HKDF.
+     * Any receiver with the packet can derive the same key from the embedded pubkey.
+     * NOT secure against eavesdroppers — for secure transfer, use passphrase mode instead.
+     *
      * @param payload plaintext bytes to broadcast
-     * @param senderKeyPair ephemeral ECDH keypair
+     * @param senderKeyPair ephemeral ECDH keypair (pubkey embedded in packet for key derivation)
      * @return encrypted packet with MAGIC + pubkey + iv + ciphertext, or null on failure
      */
     fun encryptForBroadcast(payload: ByteArray, senderKeyPair: KeyPair): ByteArray? {
         SonicVaultLogger.i("[DeadDrop] encrypting ${payload.size} bytes for broadcast")
 
-        var sharedSecret: ByteArray? = null
         var encKey: ByteArray? = null
 
         try {
-            // For broadcast mode: derive key from sender's own keypair
-            // (all receivers need the public key to derive the same shared secret)
-            val ka = KeyAgreement.getInstance("ECDH")
-            ka.init(senderKeyPair.private)
-            ka.doPhase(senderKeyPair.public, true)
-            sharedSecret = ka.generateSecret()
+            val pubKeyBytes = encodeEcPublicKey(senderKeyPair.public as java.security.interfaces.ECPublicKey)
 
-            // KDF: SHA-256 of shared secret
-            encKey = java.security.MessageDigest.getInstance("SHA-256").digest(sharedSecret!!)
+            encKey = deriveBroadcastKey(pubKeyBytes)
 
-            // AES-256-GCM encrypt
             val iv = ByteArray(GCM_IV_LENGTH)
             SecureRandom().nextBytes(iv)
 
@@ -78,22 +76,6 @@ object DeadDropEncryptor {
             cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(encKey, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
             val ciphertext = cipher.doFinal(payload)
 
-            // Encode public key
-            val pubKeyBytes = (senderKeyPair.public as java.security.interfaces.ECPublicKey).let { pk ->
-                val point = pk.w
-                val x = point.affineX.toByteArray()
-                val y = point.affineY.toByteArray()
-                // Uncompressed EC point: 0x04 || x(32) || y(32)
-                val encoded = ByteArray(65)
-                encoded[0] = 0x04
-                val xPad = 32 - x.size.coerceAtMost(32)
-                x.copyInto(encoded, 1 + xPad, maxOf(0, x.size - 32), x.size)
-                val yPad = 32 - y.size.coerceAtMost(32)
-                y.copyInto(encoded, 33 + yPad, maxOf(0, y.size - 32), y.size)
-                encoded
-            }
-
-            // Assemble packet: MAGIC(4) + pubkey(65) + iv(12) + ciphertext
             val packet = ByteArray(MAGIC.size + pubKeyBytes.size + iv.size + ciphertext.size)
             var offset = 0
             MAGIC.copyInto(packet, offset); offset += MAGIC.size
@@ -108,7 +90,6 @@ object DeadDropEncryptor {
             SonicVaultLogger.e("[DeadDrop] encryption failed", e)
             return null
         } finally {
-            sharedSecret?.wipe()
             encKey?.wipe()
         }
     }
@@ -116,10 +97,14 @@ object DeadDropEncryptor {
     /**
      * Decrypts a Dead Drop broadcast packet.
      *
+     * Broadcast mode: derives the same deterministic key from the embedded pubkey via HKDF.
+     * No keypair generation needed on the receiver side.
+     *
      * @param packet encrypted packet bytes
-     * @param receiverKeyPair receiver's keypair (for production per-recipient ECDH)
+     * @param receiverKeyPair unused in broadcast mode; retained for API compatibility
      * @return decrypted payload, or null if decryption fails
      */
+    @Suppress("UNUSED_PARAMETER")
     fun decryptBroadcast(packet: ByteArray, receiverKeyPair: KeyPair? = null): ByteArray? {
         SonicVaultLogger.i("[DeadDrop] decrypting ${packet.size} bytes")
 
@@ -128,7 +113,6 @@ object DeadDropEncryptor {
             return null
         }
 
-        // Verify magic
         for (i in MAGIC.indices) {
             if (packet[i] != MAGIC[i]) {
                 SonicVaultLogger.w("[DeadDrop] magic mismatch")
@@ -136,49 +120,17 @@ object DeadDropEncryptor {
             }
         }
 
-        var sharedSecret: ByteArray? = null
         var encKey: ByteArray? = null
 
         try {
-            // Extract components
             val pubKeyBytes = packet.copyOfRange(MAGIC.size, MAGIC.size + 65)
             val iv = packet.copyOfRange(MAGIC.size + 65, MAGIC.size + 65 + GCM_IV_LENGTH)
             val ciphertext = packet.copyOfRange(MAGIC.size + 65 + GCM_IV_LENGTH, packet.size)
 
-            // Reconstruct EC public key from uncompressed point
-            val kf = java.security.KeyFactory.getInstance("EC")
-            val x = java.math.BigInteger(1, pubKeyBytes.copyOfRange(1, 33))
-            val y = java.math.BigInteger(1, pubKeyBytes.copyOfRange(33, 65))
-            val ecPoint = java.security.spec.ECPoint(x, y)
-
-            // Use standard curve params
-            val ecParams = (generateEphemeralKeyPair().public as java.security.interfaces.ECPublicKey).params
-            val pubKeySpec = java.security.spec.ECPublicKeySpec(ecPoint, ecParams)
-            val senderPubKey = kf.generatePublic(pubKeySpec)
-
-            // For broadcast mode: derive same shared secret
-            val keyPair = receiverKeyPair ?: run {
-                // Self-decrypt: use sender's own key agreement
-                val ka = KeyAgreement.getInstance("ECDH")
-                val tempKp = generateEphemeralKeyPair()
-                ka.init(tempKp.private)
-                ka.doPhase(senderPubKey, true)
-                sharedSecret = ka.generateSecret()
-                encKey = java.security.MessageDigest.getInstance("SHA-256").digest(sharedSecret!!)
-
-                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(encKey!!, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
-                return cipher.doFinal(ciphertext)
-            }
-
-            val ka = KeyAgreement.getInstance("ECDH")
-            ka.init(keyPair.private)
-            ka.doPhase(senderPubKey, true)
-            sharedSecret = ka.generateSecret()
-            encKey = java.security.MessageDigest.getInstance("SHA-256").digest(sharedSecret!!)
+            encKey = deriveBroadcastKey(pubKeyBytes)
 
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(encKey!!, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
+            cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(encKey, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
             val plaintext = cipher.doFinal(ciphertext)
 
             SonicVaultLogger.i("[DeadDrop] decrypted ${plaintext.size} bytes")
@@ -188,14 +140,13 @@ object DeadDropEncryptor {
             SonicVaultLogger.e("[DeadDrop] decryption failed", e)
             return null
         } finally {
-            sharedSecret?.wipe()
             encKey?.wipe()
         }
     }
 
     /**
-     * Encrypts payload with passphrase for web-compatible broadcast.
-     * Format: SVDD(4) || iv(12) || ciphertext. Key = SHA-256(utf8(passphrase)).
+     * Encrypts payload with passphrase using Argon2id key derivation.
+     * Format: SVDD(4) || salt(16) || iv(12) || ciphertext+tag.
      *
      * @param payload plaintext bytes
      * @param passphrase session code (e.g. "abc123") — same on sender and receiver
@@ -203,19 +154,23 @@ object DeadDropEncryptor {
      */
     fun encryptWithPassphrase(payload: ByteArray, passphrase: String): ByteArray? {
         if (passphrase.isBlank()) return null
-        SonicVaultLogger.i("[DeadDrop] encrypting ${payload.size} bytes with passphrase")
+        SonicVaultLogger.i("[DeadDrop] encrypting ${payload.size} bytes with passphrase (Argon2id)")
         var encKey: ByteArray? = null
         try {
-            encKey = java.security.MessageDigest.getInstance("SHA-256").digest(passphrase.toByteArray(Charsets.UTF_8))
+            val salt = Argon2KeyDerivation.generateSalt()
+            encKey = Argon2KeyDerivation.deriveKey(passphrase, salt)
             val iv = ByteArray(GCM_IV_LENGTH)
             SecureRandom().nextBytes(iv)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(encKey, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
             val ciphertext = cipher.doFinal(payload)
-            val packet = ByteArray(MAGIC_PASSPHRASE.size + iv.size + ciphertext.size)
-            MAGIC_PASSPHRASE.copyInto(packet, 0)
-            iv.copyInto(packet, MAGIC_PASSPHRASE.size)
-            ciphertext.copyInto(packet, MAGIC_PASSPHRASE.size + iv.size)
+            // Packet: SVDD(4) || salt(16) || iv(12) || ciphertext+tag
+            val packet = ByteArray(MAGIC_PASSPHRASE.size + ARGON2_SALT_LENGTH + iv.size + ciphertext.size)
+            var offset = 0
+            MAGIC_PASSPHRASE.copyInto(packet, offset); offset += MAGIC_PASSPHRASE.size
+            salt.copyInto(packet, offset); offset += ARGON2_SALT_LENGTH
+            iv.copyInto(packet, offset); offset += iv.size
+            ciphertext.copyInto(packet, offset)
             SonicVaultLogger.i("[DeadDrop] passphrase packet: ${packet.size} bytes")
             return packet
         } catch (e: Exception) {
@@ -227,20 +182,24 @@ object DeadDropEncryptor {
     }
 
     /**
-     * Decrypts SVDD passphrase packet.
+     * Decrypts SVDD passphrase packet (Argon2id KDF).
+     * Packet format: SVDD(4) || salt(16) || iv(12) || ciphertext+tag.
      *
      * @param packet SVDD packet
      * @param passphrase same session code used when encrypting
      * @return plaintext, or null on failure
      */
     fun decryptWithPassphrase(packet: ByteArray, passphrase: String): ByteArray? {
-        if (passphrase.isBlank() || packet.size < MAGIC_PASSPHRASE.size + GCM_IV_LENGTH + 16) return null
+        val minSize = MAGIC_PASSPHRASE.size + ARGON2_SALT_LENGTH + GCM_IV_LENGTH + 16
+        if (passphrase.isBlank() || packet.size < minSize) return null
         if (!MAGIC_PASSPHRASE.indices.all { packet[it] == MAGIC_PASSPHRASE[it] }) return null
         var encKey: ByteArray? = null
         try {
-            encKey = java.security.MessageDigest.getInstance("SHA-256").digest(passphrase.toByteArray(Charsets.UTF_8))
-            val iv = packet.copyOfRange(MAGIC_PASSPHRASE.size, MAGIC_PASSPHRASE.size + GCM_IV_LENGTH)
-            val ciphertext = packet.copyOfRange(MAGIC_PASSPHRASE.size + GCM_IV_LENGTH, packet.size)
+            var offset = MAGIC_PASSPHRASE.size
+            val salt = packet.copyOfRange(offset, offset + ARGON2_SALT_LENGTH); offset += ARGON2_SALT_LENGTH
+            val iv = packet.copyOfRange(offset, offset + GCM_IV_LENGTH); offset += GCM_IV_LENGTH
+            val ciphertext = packet.copyOfRange(offset, packet.size)
+            encKey = Argon2KeyDerivation.deriveKey(passphrase, salt)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(encKey, "AES"), GCMParameterSpec(GCM_TAG_BITS, iv))
             return cipher.doFinal(ciphertext)
@@ -264,5 +223,31 @@ object DeadDropEncryptor {
     fun isPassphrasePacket(data: ByteArray): Boolean {
         if (data.size < MAGIC_PASSPHRASE.size) return false
         return MAGIC_PASSPHRASE.indices.all { data[it] == MAGIC_PASSPHRASE[it] }
+    }
+
+    private const val ARGON2_SALT_LENGTH = 16
+    private val HKDF_BROADCAST_INFO = "SonicVault-broadcast-v2".toByteArray(Charsets.UTF_8)
+
+    /**
+     * Derives a deterministic 256-bit key from an EC public key via HKDF.
+     * Both sender and receiver derive the same key from the embedded pubkey.
+     */
+    private fun deriveBroadcastKey(pubKeyBytes: ByteArray): ByteArray {
+        val ikm = MessageDigest.getInstance("SHA-256").digest(pubKeyBytes)
+        return Hkdf.computeHkdf("HMACSHA256", ikm, ByteArray(0), HKDF_BROADCAST_INFO, 32)
+    }
+
+    /** Encodes an EC public key as uncompressed point: 0x04 || x(32) || y(32). */
+    private fun encodeEcPublicKey(pk: java.security.interfaces.ECPublicKey): ByteArray {
+        val point = pk.w
+        val x = point.affineX.toByteArray()
+        val y = point.affineY.toByteArray()
+        val encoded = ByteArray(65)
+        encoded[0] = 0x04
+        val xPad = 32 - x.size.coerceAtMost(32)
+        x.copyInto(encoded, 1 + xPad, maxOf(0, x.size - 32), x.size)
+        val yPad = 32 - y.size.coerceAtMost(32)
+        y.copyInto(encoded, 33 + yPad, maxOf(0, y.size - 32), y.size)
+        return encoded
     }
 }

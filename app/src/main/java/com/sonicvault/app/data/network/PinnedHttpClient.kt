@@ -1,6 +1,5 @@
 package com.sonicvault.app.data.network
 
-import com.sonicvault.app.logging.SonicVaultLogger
 import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
@@ -33,24 +32,19 @@ object PinnedHttpClient {
      * - No redirects (prevent redirect-based attacks)
      * - No cache (sensitive data should not be cached)
      */
+    /**
+     * Fail-secure: if certificate pinning cannot be configured, refuse all connections
+     * rather than silently degrading to unpinned MITM-vulnerable transport.
+     */
     val client: OkHttpClient by lazy {
-        try {
-            OkHttpClient.Builder()
-                .certificatePinner(certificatePinner)
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(10, TimeUnit.SECONDS)
-                .writeTimeout(10, TimeUnit.SECONDS)
-                .followRedirects(false)
-                .followSslRedirects(false)
-                .cache(null)
-                .build()
-        } catch (e: Exception) {
-            SonicVaultLogger.e("[PinnedHttpClient] init failed, using unpinned client")
-            OkHttpClient.Builder()
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(10, TimeUnit.SECONDS)
-                .cache(null)
-                .build()
-        }
+        OkHttpClient.Builder()
+            .certificatePinner(certificatePinner)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(10, TimeUnit.SECONDS)
+            .writeTimeout(10, TimeUnit.SECONDS)
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .cache(null)
+            .build()
     }
 }

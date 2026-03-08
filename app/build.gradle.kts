@@ -11,6 +11,8 @@ configurations.all {
 
 // Read Helius API key from gradle.properties or local.properties (gitignored)
 val heliusApiKey: String = project.findProperty("HELIUS_API_KEY")?.toString() ?: ""
+// Solana cluster: "devnet" or "mainnet-beta" — set in gradle.properties
+val solanaCluster: String = project.findProperty("SOLANA_CLUSTER")?.toString() ?: "devnet"
 
 android {
     namespace = "com.sonicvault.app"
@@ -27,6 +29,7 @@ android {
             abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
         }
         buildConfigField("String", "HELIUS_API_KEY", "\"${heliusApiKey}\"")
+        buildConfigField("String", "SOLANA_CLUSTER", "\"${solanaCluster}\"")
     }
     externalNativeBuild {
         cmake {

@@ -104,8 +104,11 @@ object RootDetector {
     private fun checkDebuggable(): Boolean {
         return try {
             val process = Runtime.getRuntime().exec("getprop ro.debuggable")
-            val output = process.inputStream.bufferedReader().readLine()?.trim()
-            output == "1"
+            try {
+                process.inputStream.bufferedReader().use { it.readLine()?.trim() == "1" }
+            } finally {
+                process.destroy()
+            }
         } catch (_: Exception) {
             false
         }
@@ -120,9 +123,13 @@ object RootDetector {
     /** Check for known root management apps via package presence. */
     private fun checkRootPackages(): Boolean {
         return try {
-            val pm = Runtime.getRuntime().exec("pm list packages")
-            val output = pm.inputStream.bufferedReader().readText()
-            ROOT_PACKAGES.any { output.contains(it) }
+            val process = Runtime.getRuntime().exec("pm list packages")
+            try {
+                val output = process.inputStream.bufferedReader().use { it.readText() }
+                ROOT_PACKAGES.any { output.contains(it) }
+            } finally {
+                process.destroy()
+            }
         } catch (_: Exception) {
             false
         }

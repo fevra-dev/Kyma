@@ -110,8 +110,9 @@ class PlayIntegrityAttestationProvider : DeviceAttestationProvider {
         }
 
         /** Verify payload part decodes to something that looks like JSON. */
+        val payloadJson: String
         try {
-            val payloadJson = String(
+            payloadJson = String(
                 Base64.decode(parts[1], Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING),
                 Charsets.UTF_8
             )
@@ -121,6 +122,19 @@ class PlayIntegrityAttestationProvider : DeviceAttestationProvider {
             }
         } catch (e: Exception) {
             SonicVaultLogger.w("[Attestation] JWT payload decode failed")
+            return false
+        }
+
+        /** Verify nonce in token matches the nonce we sent — prevents replay attacks. */
+        try {
+            val nonceFromPayload = org.json.JSONObject(payloadJson).optString("nonce", "")
+            val expectedNonce = pendingNonce
+            if (expectedNonce != null && nonceFromPayload != expectedNonce) {
+                SonicVaultLogger.w("[Attestation] nonce mismatch — possible replay")
+                return false
+            }
+        } catch (e: Exception) {
+            SonicVaultLogger.w("[Attestation] nonce verification parse error")
             return false
         }
 

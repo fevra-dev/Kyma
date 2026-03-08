@@ -50,7 +50,7 @@ class SolanaRpcClient(
                     put("method", "getLatestBlockhash")
                     put("params", org.json.JSONArray().apply {
                         put(JSONObject().apply {
-                            put("commitment", "processed")
+                            put("commitment", "confirmed")
                         })
                     })
                 }.toString()
@@ -100,14 +100,71 @@ class SolanaRpcClient(
     }
 
     /**
+     * Simulates a signed transaction before submission to catch failures early.
+     * Prevents fee-burning and nonce-wasting from on-chain failures.
+     *
+     * @param signedTxBase64 base64-encoded serialized signed transaction
+     * @return [SimulationResult] indicating success or failure with error details
+     */
+    suspend fun simulateTransaction(signedTxBase64: String): SimulationResult = withContext(Dispatchers.IO) {
+        try {
+            val params = org.json.JSONArray().put(signedTxBase64)
+            params.put(JSONObject().apply {
+                put("encoding", "base64")
+                put("commitment", "confirmed")
+                put("replaceRecentBlockhash", false)
+            })
+            val body = JSONObject().apply {
+                put("jsonrpc", "2.0")
+                put("id", 9)
+                put("method", "simulateTransaction")
+                put("params", params)
+            }.toString()
+            val request = Request.Builder()
+                .url(rpcUrl)
+                .post(body.toRequestBody(JSON_MEDIA))
+                .addHeader("Content-Type", "application/json")
+                .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return@withContext SimulationResult.Failed("Simulation RPC error: ${response.code}")
+            }
+            val json = JSONObject(response.body?.string() ?: "{}")
+            if (json.has("error")) {
+                val msg = json.optJSONObject("error")?.optString("message", "unknown")
+                return@withContext SimulationResult.Failed("RPC error: $msg")
+            }
+            val result = json.optJSONObject("result")?.optJSONObject("value")
+            val err = result?.optJSONObject("err")
+            if (err != null) {
+                val logs = result.optJSONArray("logs")
+                val lastLog = if (logs != null && logs.length() > 0) logs.optString(logs.length() - 1) else null
+                SonicVaultLogger.w("[SolanaRpc] simulation failed: $err")
+                return@withContext SimulationResult.Failed(lastLog ?: err.toString())
+            }
+            SonicVaultLogger.d("[SolanaRpc] simulation passed")
+            SimulationResult.Success
+        } catch (e: Exception) {
+            SonicVaultLogger.w("[SolanaRpc] simulateTransaction exception", e)
+            SimulationResult.Failed(e.message ?: "Simulation network error")
+        }
+    }
+
+    /**
      * Submits a signed transaction via Helius Sender for higher landing rates.
-     * Helius Sender dual-routes through validators + Jito, free on all plans.
+     * Runs simulation first to catch failures before consuming fees/nonces.
      * Falls back to standard RPC sendTransaction if Sender fails.
      *
      * @param signedTransactionBase64 base64-encoded serialized signed transaction
      * @return transaction signature (base58) or null on failure
      */
     suspend fun sendTransaction(signedTransactionBase64: String): String? = withContext(Dispatchers.IO) {
+        val sim = simulateTransaction(signedTransactionBase64)
+        if (!sim.success) {
+            SonicVaultLogger.w("[SolanaRpc] TX rejected by simulation: ${sim.error}")
+            return@withContext null
+        }
+
         // Helius Sender is mainnet-only; skip for devnet (wrong cluster = silent rejection)
         if (!isDevnet) {
             val senderResult = trySendViaSender(signedTransactionBase64)
@@ -437,6 +494,11 @@ class SolanaRpcClient(
                 val statuses = result.optJSONArray("value") ?: return@repeat
                 if (statuses.length() > 0) {
                     val status = statuses.optJSONObject(0) ?: return@repeat
+                    val err = status.optJSONObject("err")
+                    if (err != null) {
+                        SonicVaultLogger.w("[SolanaRpc] tx $signature confirmed but FAILED: $err")
+                        return@withContext false
+                    }
                     val confirmationStatus = status.optString("confirmationStatus", "")
                     if (confirmationStatus.isNotEmpty() &&
                         ("confirmed" in confirmationStatus.lowercase() || "finalized" in confirmationStatus.lowercase())
@@ -488,6 +550,14 @@ class SolanaRpcClient(
         val lastValidBlockHeight: Long
     )
 
+    /** Result of [simulateTransaction]. Check [success] before submitting. */
+    data class SimulationResult private constructor(val success: Boolean, val error: String?) {
+        companion object {
+            val Success = SimulationResult(true, null)
+            fun Failed(error: String) = SimulationResult(false, error)
+        }
+    }
+
     companion object {
         /** Safe fallback priority fee (1000 microlamports) when Helius estimate unavailable. */
         private const val DEFAULT_PRIORITY_FEE = 1000L
@@ -497,17 +567,23 @@ class SolanaRpcClient(
 
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
-        /** Explorer URL for a transaction signature. */
-        fun explorerUrl(signature: String, cluster: String = "devnet"): String =
+        /** Explorer URL for a transaction signature. Uses BuildConfig cluster by default. */
+        fun explorerUrl(signature: String, cluster: String = BuildConfig.SOLANA_CLUSTER): String =
             "https://explorer.solana.com/tx/$signature?cluster=$cluster"
 
-        /** Builds Helius RPC URL from BuildConfig API key, falls back to public devnet. */
+        /**
+         * Builds Helius RPC URL from BuildConfig API key and cluster.
+         * Cluster is read from BuildConfig.SOLANA_CLUSTER (set in gradle.properties).
+         */
         fun buildHeliusRpcUrl(): String {
             val key = BuildConfig.HELIUS_API_KEY
+            val cluster = BuildConfig.SOLANA_CLUSTER
             return if (key.isNotBlank()) {
-                "https://devnet.helius-rpc.com/?api-key=$key"
+                if (cluster == "mainnet-beta") "https://mainnet.helius-rpc.com/?api-key=$key"
+                else "https://devnet.helius-rpc.com/?api-key=$key"
             } else {
-                "https://api.devnet.solana.com"
+                if (cluster == "mainnet-beta") "https://api.mainnet-beta.solana.com"
+                else "https://api.devnet.solana.com"
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.sonicvault.app.data.ecdh
 
+import com.sonicvault.app.data.crypto.SasGenerator
 import com.sonicvault.app.logging.SonicVaultLogger
 import com.sonicvault.app.util.wipe
 import com.google.crypto.tink.subtle.Hkdf
@@ -22,12 +23,17 @@ interface EcdhHandshake {
     data class HandshakeResult(
         val sessionKey: ByteArray,
         val localEphemeralPubKey: ByteArray,
-        val remoteEphemeralPubKey: ByteArray
-    ) {
+        val remoteEphemeralPubKey: ByteArray,
+        /** 6-char SAS for verbal MITM verification, bound to both pubkeys and session key. */
+        val sas: String
+    ) : java.io.Closeable {
+        /** Wipes session key material. Call when the session is no longer needed. */
+        override fun close() { sessionKey.wipe() }
         override fun equals(other: Any?) = (other is HandshakeResult) &&
             sessionKey.contentEquals(other.sessionKey) &&
             localEphemeralPubKey.contentEquals(other.localEphemeralPubKey) &&
-            remoteEphemeralPubKey.contentEquals(other.remoteEphemeralPubKey)
+            remoteEphemeralPubKey.contentEquals(other.remoteEphemeralPubKey) &&
+            sas == other.sas
         override fun hashCode() = sessionKey.contentHashCode()
     }
 
@@ -137,20 +143,27 @@ class EcdhHandshakeImpl : EcdhHandshake {
     private fun buildPacket(type: Byte, pubKey: ByteArray): ByteArray =
         byteArrayOf(VERSION_BYTE, type) + pubKey
 
+    /**
+     * Derives session key via HKDF with both pubkeys bound in the info parameter,
+     * then computes a 6-char SAS for verbal MITM verification.
+     */
     private fun deriveSessionKey(
         myPrivKey: ByteArray,
         myPubKey: ByteArray,
         remotePubKey: ByteArray
     ): EcdhHandshake.HandshakeResult {
         val sharedSecret = X25519.computeSharedSecret(myPrivKey, remotePubKey)
+        // Bind both public keys into HKDF info for session-specific domain separation
+        val info = HKDF_INFO.toByteArray(Charsets.UTF_8) + myPubKey + remotePubKey
         val sessionKey = Hkdf.computeHkdf(
             HKDF_ALGORITHM,
             sharedSecret,
             ByteArray(0),
-            HKDF_INFO.toByteArray(Charsets.UTF_8),
+            info,
             SESSION_KEY_LEN
         )
         sharedSecret.wipe()
-        return EcdhHandshake.HandshakeResult(sessionKey, myPubKey, remotePubKey)
+        val sas = SasGenerator.generate(sessionKey, "SONICVAULT-ECDH-SAS")
+        return EcdhHandshake.HandshakeResult(sessionKey, myPubKey, remotePubKey, sas)
     }
 }

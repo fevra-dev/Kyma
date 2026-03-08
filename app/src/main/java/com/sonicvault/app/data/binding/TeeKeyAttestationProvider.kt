@@ -100,15 +100,26 @@ object TeeKeyAttestationProvider {
      * Checks if the attestation certificate indicates hardware-backed key.
      * Parses the Android Key Attestation Extension (OID 1.3.6.1.4.1.11129.2.1.17).
      *
-     * The attestation security level is at byte offset in the ASN.1 structure:
-     * securityLevel 0 = Software, 1 = TrustedEnvironment, 2 = StrongBox
+     * The root ASN.1 SEQUENCE layout (per Google's spec):
+     *   [0] attestationVersion INTEGER
+     *   [1] attestationSecurityLevel INTEGER  ← 0=Software, 1=TEE, 2=StrongBox
+     *   [2] keymasterVersion INTEGER
+     *   [3] keymasterSecurityLevel INTEGER
+     *   ...
      */
     private fun isHardwareAttestation(cert: X509Certificate?): Boolean {
         if (cert == null) return false
-        val attestationExtension = cert.getExtensionValue("1.3.6.1.4.1.11129.2.1.17")
-        /** If attestation extension exists, the key was generated with attestation.
-         *  Check the raw bytes for security level > 0 (hardware-backed). */
-        return attestationExtension != null && attestationExtension.size > 10
+        val extensionBytes = cert.getExtensionValue("1.3.6.1.4.1.11129.2.1.17")
+            ?: return false
+        try {
+            val inner = org.bouncycastle.asn1.ASN1OctetString.getInstance(extensionBytes).octets
+            val seq = org.bouncycastle.asn1.ASN1Sequence.getInstance(inner)
+            val securityLevel = (seq.getObjectAt(1) as org.bouncycastle.asn1.ASN1Integer).intValueExact()
+            return securityLevel >= 1
+        } catch (e: Exception) {
+            SonicVaultLogger.w("[TeeAttestation] ASN.1 parse failed, assuming software-backed")
+            return false
+        }
     }
 }
 

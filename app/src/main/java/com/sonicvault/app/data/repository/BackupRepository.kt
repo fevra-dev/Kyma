@@ -220,7 +220,7 @@ class BackupRepositoryImpl(
                     }
                     val fingerprint = com.sonicvault.app.data.media.SoundFingerprint.fromWavBytes(stegoBytes)
                     val shortId = com.sonicvault.app.data.media.SoundFingerprint.shortIdFromBytes(stegoBytes)
-                    val albumArt = com.sonicvault.app.data.media.AlbumArtGenerator.generate(seedPhrase)
+                    val albumArt = com.sonicvault.app.data.media.AlbumArtGenerator.generateFromHash(checksumRaw)
 
                     SonicVaultLogger.i("createBackup completed stegoUri=$stegoUri shortId=$shortId")
                     Result.success(CreateBackupResult(stegoUri, checksum, fingerprint, albumArt, shortId))

@@ -1,6 +1,7 @@
 package com.sonicvault.app.data.crypto
 
 import androidx.fragment.app.FragmentActivity
+import com.sonicvault.app.BuildConfig
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -16,6 +17,10 @@ import javax.crypto.spec.GCMParameterSpec
  * in the same app session (ephemeral key).
  */
 class FakeSeedVaultCrypto : SeedVaultCrypto {
+
+    init {
+        require(BuildConfig.DEBUG) { "FakeSeedVaultCrypto must not be used in release builds" }
+    }
 
     private val key: SecretKey = KeyGenerator.getInstance("AES").apply { init(256) }.generateKey()
 

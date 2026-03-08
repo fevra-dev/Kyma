@@ -5,6 +5,35 @@ package com.sonicvault.app.data.solana
  *
  * Tree and collection must be pre-created on devnet. Use depth 10, buffer 64, canopy 5 (~0.07 SOL).
  * Replace placeholders with actual addresses after running the tree creation script.
+ *
+ * ## Deployment Steps (devnet)
+ *
+ * 1. Install Metaplex CLI:
+ *    ```
+ *    npm i -g @metaplex-foundation/cli
+ *    ```
+ *
+ * 2. Create merkle tree (depth 10 = 1024 leaves, buffer 64, canopy 5):
+ *    ```
+ *    metaplex bubblegum create-tree \
+ *      --rpc-url https://api.devnet.solana.com \
+ *      --keypair ~/.config/solana/id.json \
+ *      --max-depth 10 --max-buffer-size 64 --canopy-depth 5
+ *    ```
+ *    → Copy the merkle tree address into [KYMA_CNFT_TREE]
+ *
+ * 3. Create collection NFT:
+ *    ```
+ *    metaplex token-metadata create \
+ *      --rpc-url https://api.devnet.solana.com \
+ *      --keypair ~/.config/solana/id.json \
+ *      --name "MONOLITH 2026" --symbol "M26POP" \
+ *      --uri "https://kyma.xyz/pop/monolith2026.json" \
+ *      --is-collection true --seller-fee-basis-points 0
+ *    ```
+ *    → Copy the mint address into [KYMA_COLLECTION_MINT]
+ *
+ * 4. Rebuild the app — [isPlaceholder] will return false and minting will be enabled.
  */
 object BubblegumConstants {
 
@@ -43,4 +72,12 @@ object BubblegumConstants {
 
     /** cNFT symbol. */
     const val CNFT_SYMBOL = "M26POP"
+
+    /** System Program placeholder used before real addresses are deployed. */
+    private const val SYSTEM_PROGRAM_PLACEHOLDER = "11111111111111111111111111111111"
+
+    /** @return true if tree or collection mint are still placeholder addresses. */
+    val isPlaceholder: Boolean
+        get() = KYMA_CNFT_TREE == SYSTEM_PROGRAM_PLACEHOLDER ||
+                KYMA_COLLECTION_MINT == SYSTEM_PROGRAM_PLACEHOLDER
 }

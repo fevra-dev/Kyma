@@ -113,6 +113,12 @@ object BubblegumTransactionBuilder {
 
     /**
      * Builds mintToCollectionV1 instruction data (discriminator + Borsh MetadataArgs).
+     *
+     * Borsh field sizes per Bubblegum IDL:
+     *   sellerFeeBasisPoints: u16 (2), primarySaleHappened: bool (1), isMutable: bool (1),
+     *   editionNonce: Option<u8> (1 for None), tokenStandard: Option<u8> (1 for None),
+     *   collection: Option<Collection> (1+32+1), uses: Option<Uses> (1 for None),
+     *   tokenProgramVersion: enum u8 (1), creators: Vec<Creator> length u32 (4) + per-creator (32+1+1).
      */
     private fun buildMetadataArgsBorsh(
         name: String,
@@ -125,7 +131,7 @@ object BubblegumTransactionBuilder {
         val symbolBytes = symbol.toByteArray(Charsets.UTF_8)
         val uriBytes = uri.toByteArray(Charsets.UTF_8)
         val size = 8 + 4 + nameBytes.size + 4 + symbolBytes.size + 4 + uriBytes.size +
-            2 + 1 + 1 + 2 + 2 + 34 + 1 + 4 + 4 + (32 + 1)  // creators: len(4) + creator(32+1)
+            2 + 1 + 1 + 1 + 1 + (1 + 32 + 1) + 1 + 1 + 4 + (32 + 1 + 1)
         val buf = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
         buf.put(MINT_TO_COLLECTION_V1_DISCRIMINATOR)
         buf.putInt(nameBytes.size)
@@ -134,19 +140,20 @@ object BubblegumTransactionBuilder {
         buf.put(symbolBytes)
         buf.putInt(uriBytes.size)
         buf.put(uriBytes)
-        buf.putShort(0)           // sellerFeeBasisPoints
-        buf.put(1)                // primarySaleHappened = true
-        buf.put(1)                // isMutable = true
-        buf.putShort(0)           // editionNonce = None
-        buf.putShort(0)           // tokenStandard = None
-        buf.put(1)                // collection Option::Some
-        buf.put(collectionMint.toByteArray())
-        buf.put(1)                // verified = true
-        buf.put(0)                // uses = None
-        buf.putInt(1)             // tokenProgramVersion = TokenProgramVersion.Original
-        buf.putInt(1)             // creators len
-        buf.put(creator.toByteArray())
-        buf.putShort(100)         // share = 100
+        buf.putShort(0)           // sellerFeeBasisPoints: u16
+        buf.put(1)                // primarySaleHappened: bool = true
+        buf.put(1)                // isMutable: bool = true
+        buf.put(0)                // editionNonce: Option<u8> = None (1 byte)
+        buf.put(0)                // tokenStandard: Option<u8> = None (1 byte)
+        buf.put(1)                // collection: Option::Some
+        buf.put(collectionMint.toByteArray()) // collection.key (32 bytes)
+        buf.put(1)                // collection.verified: bool = true
+        buf.put(0)                // uses: Option<Uses> = None
+        buf.put(0)                // tokenProgramVersion: enum Original = 0 (1 byte)
+        buf.putInt(1)             // creators vec length: u32
+        buf.put(creator.toByteArray()) // creator address (32 bytes)
+        buf.put(1)                // creator.verified: bool = true
+        buf.put(100.toByte())     // creator.share: u8 = 100
         return buf.array()
     }
 
@@ -177,7 +184,7 @@ object BubblegumTransactionBuilder {
      * @param treeCreatorOrDelegate base58 tree creator (must sign; use event key for public tree)
      * @param collectionAuthority base58 collection authority (must sign)
      * @param blockhash recent blockhash from RPC
-     * @return Unsigned Transaction or null on failure
+     * @return Unsigned Transaction or null on failure; returns null if tree/collection not deployed
      */
     fun buildMintToCollectionV1(
         leafOwner: String,
@@ -187,6 +194,10 @@ object BubblegumTransactionBuilder {
         collectionAuthority: String,
         blockhash: String
     ): Transaction? {
+        if (BubblegumConstants.isPlaceholder) {
+            SonicVaultLogger.e("[BubblegumTxBuilder] cNFT tree/collection not deployed — see BubblegumConstants for deployment steps")
+            return null
+        }
         return try {
             val leafOwnerKey = PublicKey(leafOwner)
             val merkleTreeKey = PublicKey(merkleTree)

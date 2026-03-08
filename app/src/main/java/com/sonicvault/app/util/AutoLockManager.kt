@@ -27,9 +27,14 @@ object AutoLockManager : DefaultLifecycleObserver {
     /** Minimum allowed timeout (1 minute). */
     private const val MIN_TIMEOUT_MS = 60_000L
 
-    /** Configurable timeout. */
+    /** Configurable timeout — private set to prevent runtime tampering via Frida/Xposed. */
     var timeoutMs: Long = DEFAULT_TIMEOUT_MS
-        set(value) { field = value.coerceAtLeast(MIN_TIMEOUT_MS) }
+        private set
+
+    /** Update timeout; enforces minimum of [MIN_TIMEOUT_MS]. */
+    fun configure(timeoutMs: Long) {
+        this.timeoutMs = timeoutMs.coerceAtLeast(MIN_TIMEOUT_MS)
+    }
 
     /** Timestamp of last user interaction. */
     @Volatile
@@ -43,8 +48,13 @@ object AutoLockManager : DefaultLifecycleObserver {
     private val _isLocked = MutableStateFlow(false)
     val isLocked: StateFlow<Boolean> = _isLocked.asStateFlow()
 
-    /** Whether auto-lock is enabled. */
+    /** Whether auto-lock is enabled — private set to prevent runtime tampering. */
     var enabled: Boolean = true
+        private set
+
+    fun setEnabled(value: Boolean) {
+        enabled = value
+    }
 
     /**
      * Initialize: register with ProcessLifecycleOwner.
@@ -61,10 +71,6 @@ object AutoLockManager : DefaultLifecycleObserver {
      */
     fun recordInteraction() {
         lastInteractionMs = System.currentTimeMillis()
-        if (_isLocked.value) {
-            /** Unlock if user interacts after lock (they must re-authenticate). */
-            _isLocked.value = false
-        }
     }
 
     /** Called when the app returns to foreground. */

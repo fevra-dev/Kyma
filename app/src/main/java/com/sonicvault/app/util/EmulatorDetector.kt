@@ -29,5 +29,11 @@ fun isEmulator(): Boolean {
         || Build.HARDWARE.lowercase().contains("nox")
         || Build.HARDWARE.lowercase().contains("andy")
         || Build.HARDWARE.lowercase().contains("ttvm")
+        || Build.HARDWARE.lowercase().contains("qemu")
         || Build.MODEL.lowercase().contains("sdk")
+        || Build.MANUFACTURER.lowercase().contains("bluestacks")
+        || Build.MODEL.lowercase().contains("bluestacks")
+        || Build.PRODUCT.lowercase().contains("vbox")
+        || Build.DEVICE.lowercase().contains("vbox")
+        || (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic"))
 }

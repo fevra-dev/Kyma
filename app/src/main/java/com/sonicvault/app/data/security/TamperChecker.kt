@@ -3,6 +3,7 @@ package com.sonicvault.app.data.security
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import com.sonicvault.app.BuildConfig
 import com.sonicvault.app.logging.SonicVaultLogger
 import java.security.MessageDigest
 
@@ -38,7 +39,11 @@ object TamperChecker {
      *         [TamperResult.Tampered] if signature mismatch detected.
      */
     fun verify(context: Context): TamperResult {
-        /** Skip check if expected hash is not configured (development). */
+        if (BuildConfig.DEBUG) {
+            val currentHash = getSigningCertificateHash(context)
+            SonicVaultLogger.d("[TamperChecker] current signing hash: $currentHash")
+        }
+
         if (EXPECTED_RELEASE_HASH.isEmpty()) {
             SonicVaultLogger.d("[TamperChecker] skipped: no expected hash configured")
             return TamperResult.Trusted
@@ -58,10 +63,18 @@ object TamperChecker {
                 SonicVaultLogger.w("[TamperChecker] SIGNATURE MISMATCH — possible repackaging")
                 TamperResult.Tampered("APK signature does not match expected release signature")
             }
-        } catch (e: Exception) {
-            SonicVaultLogger.e("[TamperChecker] verification failed", e)
-            TamperResult.Tampered("Verification error: ${e.message}")
+        } catch (_: Exception) {
+            SonicVaultLogger.e("[TamperChecker] signature verification failed")
+            TamperResult.Tampered("Signature verification failed")
         }
+    }
+
+    /**
+     * Computes the SHA-256 hash of the current signing certificate.
+     * Use in debug builds to obtain the hash for [EXPECTED_RELEASE_HASH].
+     */
+    fun computeCurrentHash(context: Context): String? {
+        return getSigningCertificateHash(context)
     }
 
     /**

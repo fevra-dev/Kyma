@@ -271,6 +271,53 @@ object SolanaTransactionBuilder {
         }
     }
 
+    /** Writes 4-byte little-endian u32 at offset. */
+    private fun writeU32LE(value: Long, data: ByteArray, offset: Int) {
+        for (i in 0..3) {
+            data[offset + i] = ((value shr (i * 8)) and 0xFF).toByte()
+        }
+    }
+
+    // ──────────────────── Compute Budget Program ────────────────────
+
+    private val COMPUTE_BUDGET_PROGRAM = PublicKey("ComputeBudget111111111111111111111111111111")
+
+    /**
+     * SetComputeUnitLimit instruction.
+     * Instruction index = 2 (1 byte) + u32 units (4 bytes).
+     */
+    fun buildSetComputeUnitLimitIx(units: Int): com.solana.core.TransactionInstruction {
+        val data = ByteArray(5)
+        data[0] = 2
+        writeU32LE(units.toLong(), data, 1)
+        return Program.createTransactionInstruction(COMPUTE_BUDGET_PROGRAM, ArrayList(), data)
+    }
+
+    /**
+     * SetComputeUnitPrice instruction.
+     * Instruction index = 3 (1 byte) + u64 microLamports (8 bytes).
+     */
+    fun buildSetComputeUnitPriceIx(microLamports: Long): com.solana.core.TransactionInstruction {
+        val data = ByteArray(9)
+        data[0] = 3
+        writeU64LE(microLamports, data, 1)
+        return Program.createTransactionInstruction(COMPUTE_BUDGET_PROGRAM, ArrayList(), data)
+    }
+
+    /**
+     * Prepends SetComputeUnitLimit + SetComputeUnitPrice instructions to a transaction.
+     * Must be called before serialization. Places compute budget ixs at index 0 and 1.
+     *
+     * @param tx target transaction
+     * @param units compute unit limit (default 200k — sufficient for most transfers)
+     * @param microLamports priority fee per CU (default 1000 — ~medium priority)
+     */
+    fun addComputeBudget(tx: Transaction, units: Int = 200_000, microLamports: Long = 1000L) {
+        tx.instructions.add(0, buildSetComputeUnitPriceIx(microLamports))
+        tx.instructions.add(0, buildSetComputeUnitLimitIx(units))
+        SonicVaultLogger.d("[SolanaTxBuilder] added compute budget: $units CU, $microLamports µ◎")
+    }
+
     /**
      * AdvanceNonceAccount instruction: accounts = [nonce writable, recent_blockhashes, authority signer].
      * Data = 4-byte u32 = 4 (instruction index).
@@ -296,6 +343,11 @@ object SolanaTransactionBuilder {
      * @param rentLamports amount for rent exemption (from getMinimumBalanceForRentExemption(80))
      * @param blockhash recent blockhash
      * @return CreateNonceAccountResult with tx, nonceAccount (for signing), or null on failure
+     */
+    /**
+     * SECURITY: The returned [CreateNonceAccountResult] holds a HotAccount keypair whose private
+     * key material lives in JVM heap. SolanaKT's HotAccount does not expose raw secret bytes
+     * for wiping. The caller (NoncePoolManager) MUST discard the reference promptly after signing.
      */
     fun buildCreateNonceAccountTx(
         payerPubkey: String,

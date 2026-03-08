@@ -40,8 +40,13 @@ object SonicVaultLogger {
         Log.w(TAG, msg)
     }
 
+    /** Warning with throwable — stack trace stripped in release to prevent leaking internals. */
     fun w(msg: String, t: Throwable) {
-        Log.w(TAG, msg, t)
+        if (BuildConfig.DEBUG) {
+            Log.w(TAG, msg, t)
+        } else {
+            Log.w(TAG, "$msg [${t.javaClass.simpleName}]")
+        }
     }
 
     /**
@@ -53,7 +58,12 @@ object SonicVaultLogger {
         Log.e(TAG, msg)
     }
 
+    /** Error with throwable — stack trace stripped in release to prevent leaking internals. */
     fun e(msg: String, t: Throwable) {
-        Log.e(TAG, msg, t)
+        if (BuildConfig.DEBUG) {
+            Log.e(TAG, msg, t)
+        } else {
+            Log.e(TAG, "$msg [${t.javaClass.simpleName}]")
+        }
     }
 }

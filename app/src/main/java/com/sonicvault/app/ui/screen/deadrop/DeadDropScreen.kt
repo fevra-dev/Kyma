@@ -273,7 +273,7 @@ class DeadDropViewModel(
                     } else {
                         ReedSolomonCodec.encode(v2Packet)
                     }
-                    sas = SasGenerator.generate(result.sessionKey, "SONICVAULT-ECDH-SAS")
+                    sas = result.sas
                     if (_useFountainMode.value) {
                         FountainTransmitter.transmitFountain(bytesToSend, _protocol.value, applyFingerprintRandomization = _protocol.value == Protocol.ULTRASONIC && userPreferences.useAntiFingerprint)
                     } else {
@@ -453,8 +453,7 @@ class DeadDropViewModel(
                                 if (plaintext != null) {
                                     pendingHandshakeResult = null
                                     val msg = String(plaintext, Charsets.UTF_8)
-                                    val sas = SasGenerator.generate(result.sessionKey, "SONICVAULT-ECDH-SAS")
-                                    _state.value = DeadDropState.Received(msg, sas)
+                                    _state.value = DeadDropState.Received(msg, result.sas)
                                     receivedAny = true
                                 }
                             }
@@ -521,8 +520,7 @@ class DeadDropViewModel(
                 if (plaintext != null) {
                     pendingHandshakeResult = null
                     val msg = String(plaintext, Charsets.UTF_8)
-                    val sas = SasGenerator.generate(result.sessionKey, "SONICVAULT-ECDH-SAS")
-                    _state.value = DeadDropState.Received(msg, sas)
+                    _state.value = DeadDropState.Received(msg, result.sas)
                     return true
                 }
             }

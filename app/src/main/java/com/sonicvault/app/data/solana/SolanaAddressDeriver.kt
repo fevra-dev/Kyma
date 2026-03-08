@@ -6,6 +6,11 @@ import com.solana.core.HotAccount
 /**
  * Derives Solana address from BIP39 mnemonic using standard path m/44'/501'/0'/0'.
  * Used for vanity address search (prefix/suffix matching).
+ *
+ * SECURITY: HotAccount.fromMnemonic creates a full Ed25519 keypair in JVM heap.
+ * SolanaKT does not expose raw secret bytes for wiping. The keypair reference is
+ * discarded after extraction of the public key, but the secret material persists
+ * until GC. Only use this in controlled contexts (setup, not hot path).
  */
 object SolanaAddressDeriver {
 
