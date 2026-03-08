@@ -56,7 +56,10 @@ fun SettingsScreen(
     onNoncePoolSetup: () -> Unit = {},
     onMatryoshka: () -> Unit = {},
     onSplitSeed: () -> Unit = {},
-    onRecombineSeed: () -> Unit = {}
+    onRecombineSeed: () -> Unit = {},
+    onCnftDrop: () -> Unit = {},
+    onPresenceOracle: () -> Unit = {},
+    onGuardianVote: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -217,6 +220,51 @@ fun SettingsScreen(
             }
             Text(
                 text = "Recombine Shamir shares to restore your seed phrase.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = Spacing.xs.dp)
+            )
+            SectionDivider()
+
+            /* ── TIER 2 DEMOS ── */
+            SectionHeader(title = "TIER 2 DEMOS")
+            OutlinedButton(
+                onClick = onCnftDrop,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text("cNFT ACOUSTIC DROP", style = LabelUppercaseStyle)
+            }
+            Text(
+                text = "Listen for event_id, claim compressed NFT to wallet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = Spacing.xs.dp)
+            )
+            Spacer(modifier = Modifier.height(Spacing.xs.dp))
+            OutlinedButton(
+                onClick = onPresenceOracle,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text("PRESENCE ORACLE", style = LabelUppercaseStyle)
+            }
+            Text(
+                text = "Acoustic certificate assembly with dual-signature flow.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = Spacing.xs.dp)
+            )
+            Spacer(modifier = Modifier.height(Spacing.xs.dp))
+            OutlinedButton(
+                onClick = onGuardianVote,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                shape = MaterialTheme.shapes.medium
+            ) {
+                Text("GUARDIAN VOTING", style = LabelUppercaseStyle)
+            }
+            Text(
+                text = "Broadcast proposal, receive vote via acoustic return.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = Spacing.xs.dp)

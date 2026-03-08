@@ -1,9 +1,11 @@
 package com.sonicvault.app.data.nonce
 
 import com.sonicvault.app.data.solana.SolanaRpcClient
+import com.sonicvault.app.data.solana.SolanaTransactionBuilder
 import com.sonicvault.app.logging.SonicVaultLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -101,17 +103,98 @@ class NoncePoolManager(
     // ─────────────────────────────────────────────────────────────
 
     /**
-     * Creates [count] nonce accounts on-chain and stores them in Room.
+     * Batch-creates [count] nonce accounts on-chain and stores them in Room.
+     *
+     * Uses the same pattern as NoncePoolSetupViewModel.createNonceAccount: for each
+     * iteration, builds create-nonce TX via SolanaTransactionBuilder, signs nonce account
+     * locally, then delegates MWA signing + RPC submit to [signAndSubmit].
      *
      * Requires internet + ~[count * COST_PER_NONCE_SOL] SOL in the payer account.
-     * Returns base58 pubkeys of created nonce accounts.
+     * Returns base58 pubkeys of successfully created nonce accounts.
      *
-     * Note: Requires TransactionBuilder.createNonceAccount — not yet implemented.
-     * Use discoverExistingNonces + insert to populate pool from existing accounts.
+     * @param signAndSubmit Receives buildTx(payer) -> (partiallySignedBytes, noncePubkey);
+     *   caller runs MWA to get payer, invokes buildTx, signs + submits; returns (txSig, noncePubkey).
      */
-    suspend fun setupPool(payerPublicKey: String, count: Int = DEFAULT_POOL_SIZE): List<String> {
-        SonicVaultLogger.w("[NoncePool] setupPool not implemented — use discoverExistingNonces to populate")
-        return emptyList()
+    suspend fun setupPool(
+        count: Int = DEFAULT_POOL_SIZE,
+        signAndSubmit: suspend (buildTx: suspend (payer: String) -> Pair<ByteArray, String>?) -> Pair<String?, String?>?
+    ): List<String> {
+        val blockhashResult = rpc.getLatestBlockhash()
+            ?: run {
+                SonicVaultLogger.e("[NoncePool] setupPool: no blockhash")
+                return emptyList()
+            }
+
+        val rentLamports = rpc.getMinimumBalanceForRentExemption(NONCE_ACCOUNT_SIZE.toLong())
+        if (rentLamports <= 0) {
+            SonicVaultLogger.e("[NoncePool] setupPool: invalid rent exemption")
+            return emptyList()
+        }
+
+        val created = mutableListOf<String>()
+        repeat(count) { i ->
+            val result = signAndSubmit { payer ->
+                val trimmed = payer.trim()
+                if (trimmed.isBlank()) {
+                    SonicVaultLogger.e("[NoncePool] setupPool: blank payer at $i")
+                    return@signAndSubmit null
+                }
+                val buildResult = SolanaTransactionBuilder.buildCreateNonceAccountTx(
+                    payerPubkey = trimmed,
+                    authorityPubkey = trimmed,
+                    rentLamports = rentLamports,
+                    blockhash = blockhashResult.blockhash
+                ) ?: run {
+                    SonicVaultLogger.e("[NoncePool] setupPool: buildCreateNonceAccountTx failed at $i")
+                    return@signAndSubmit null
+                }
+
+                val tx = buildResult.tx
+                val nonceAccount = buildResult.nonceAccount
+                val noncePubkey = nonceAccount.publicKey.toBase58()
+
+                val message = SolanaTransactionBuilder.serializeMessage(tx)
+                    ?: run {
+                        SonicVaultLogger.e("[NoncePool] setupPool: serializeMessage failed at $i")
+                        return@signAndSubmit null
+                    }
+                val nonceSig = nonceAccount.sign(message)
+                tx.addSignature(nonceAccount.publicKey, nonceSig)
+
+                val bytes = SolanaTransactionBuilder.serializeForSigning(tx)
+                    ?: run {
+                        SonicVaultLogger.e("[NoncePool] setupPool: serializeForSigning failed at $i")
+                        return@signAndSubmit null
+                    }
+                Pair(bytes, noncePubkey)
+            }
+
+            val (txSig, noncePubkey) = result ?: run {
+                SonicVaultLogger.w("[NoncePool] setupPool: signAndSubmit failed at $i")
+                return@repeat
+            }
+            if (txSig == null || noncePubkey == null) {
+                SonicVaultLogger.w("[NoncePool] setupPool: no txSig or noncePubkey at $i")
+                return@repeat
+            }
+
+            // 5s delay for account to be visible via getNonce (3s was too short)
+            delay(5000)
+            var inserted = insertNonceAfterCreate(noncePubkey)
+            if (!inserted) {
+                delay(3000)
+                inserted = insertNonceAfterCreate(noncePubkey)
+            }
+            if (inserted) {
+                created.add(noncePubkey)
+                SonicVaultLogger.i("[NoncePool] setupPool: created nonce $i/${count}")
+            } else {
+                SonicVaultLogger.w("[NoncePool] setupPool: insertNonceAfterCreate failed for $noncePubkey")
+            }
+        }
+
+        SonicVaultLogger.i("[NoncePool] setupPool: created ${created.size}/$count nonces")
+        return created
     }
 
     /**

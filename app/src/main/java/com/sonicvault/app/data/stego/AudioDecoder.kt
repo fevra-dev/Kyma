@@ -40,7 +40,7 @@ import java.nio.ByteOrder
  * ## Opus and ultrasonic frequencies
  *
  * Opus typically cuts frequencies above ~20 kHz even in fullband mode.
- * Ultrasonic steganography (18–22 kHz) and ggwave ultrasonic transmission
+ * Ultrasonic steganography (15–19.5 kHz) and ggwave ultrasonic transmission
  * would be destroyed by Opus encoding. Use WAV or FLAC for any ultrasonic data.
  */
 interface AudioDecoder {

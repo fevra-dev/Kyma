@@ -51,14 +51,14 @@ Built for the **Solana Seeker App Hackathon** and **Monolith Hackathon 2026**.
 - **GPS spoofing detection** — Multi-signal analysis (mock provider, accuracy, altitude, provider status)
 
 ### Sound Transfer
-- **Ultrasonic data-over-sound** — Transmit/receive via ggwave (18-22 kHz) between devices. Custom JNI wrapper; 17 kHz start to avoid Android 10–16 kHz mic dead zone.
+- **Ultrasonic data-over-sound** — Transmit/receive via ggwave multi-tone FSK (mFSK) in the 15–19.5 kHz near-ultrasonic band (~160 bps effective throughput) between devices. Custom JNI wrapper; 15 kHz base frequency.
 - **Chunked transmission** — Payloads >140 bytes: AcousticChunker (MAGIC + SESSION_ID + SEQ + CRC16) → each chunk 2× with 300ms gap. AcousticChunkReceiver reassembles.
 - **NACK retransmit** — AcousticNack: cold device sends NACK on decode/CRC fail; hot retransmits that chunk.
 - **AcousticTransmitter / AcousticChunkReceiver** — Session-filtered flows for SonicSafe (TX session 1, signature session 2) and RestoreBroadcast (session 3).
 - **Dead Drop broadcast** — One-to-many encrypted ultrasonic broadcast with ECDH + AES-256-GCM per recipient
 - **Web receiver** — `docs/web/sonic_receive.html` receives Solana Pay URIs and Sonic data (plain text, Reed-Solomon, SVDD) in a browser via ggwave-wasm
 - **AirDrop-style handshake** — Radiating rings animation with 7-state connection UX (Idle, Initializing, Broadcasting, Listening, Waiting for Ack, Complete, Failed, Timeout)
-- **Live FFT spectrogram** — 4-band color-coded visualization with red highlight on 18-22 kHz during transmission
+- **Live FFT spectrogram** — 4-band color-coded visualization with red highlight on 15–19.5 kHz during transmission
 
 ### Seed Generation
 - **Sound as Seed** — Generate BIP39 mnemonics from ambient sound entropy (SHA-512 of raw + spectral + delta + statistical + ZCR features, mixed with SecureRandom via HMAC-SHA256)
@@ -168,6 +168,48 @@ Open the `SonicVault` folder, sync Gradle, run on device/emulator (API 24+).
 
 ---
 
+## Testing Flows
+
+Step-by-step flows for validating SonicRequest, SonicSafe, and Nonce Pool on devnet.
+
+### Flow A: SonicRequest (Solana Pay over sound) — Two Phantom phones
+
+1. Open `sonic_send.html` (or `docs/web/sonic_send.html`) on laptop; enter recipient wallet, amount, label.
+2. On **receiver phone** (wallet that will receive SOL), note the address.
+3. On **sender phone** (has SOL to send), open SonicRequest screen.
+4. Tap BROADCAST on laptop — it plays the Solana Pay URI as sound.
+5. Sender phone decodes the acoustic payload, shows payment details.
+6. Tap APPROVE — Phantom opens; biometric to connect, biometric to sign.
+7. TX submits to devnet; explorer link shown.
+
+### Flow B: SonicSafe Cold Sign — Two phones
+
+1. **Hot phone**: Open SonicSafe → Hot Signer tab.
+2. Enter recipient address, amount.
+3. Tap SEND FOR SIGNING — unsigned TX transmits acoustically.
+4. **Cold phone**: Open SonicSafe → Cold Signer tab (listening).
+5. Cold phone decodes TX, shows details (recipient, amount, durable nonce badge).
+6. Tap APPROVE AND SIGN — Phantom signs.
+7. Cold phone transmits 64-byte signature back acoustically (2× with 1s gap for reliability).
+8. Hot phone receives signature, reconstructs full TX, submits to devnet.
+9. Both phones show success.
+
+### Flow C: Nonce Pool Setup
+
+1. Open Settings → NONCE POOL SETUP.
+2. Tap CREATE — MWA prompt appears 3 times (one per nonce account).
+3. Each creates a nonce account on devnet (~0.00136 SOL each).
+4. After creation (5s delay + retry), nonces appear as AVAILABLE in the pool.
+5. SonicSafe uses these for durable nonce transactions.
+
+### Seeker (Solana Mobile) vs Phantom
+
+- **Seeker with Seed Vault**: Uses Seed Vault TEE instead of Phantom. Same MWA protocol; signing in hardware secure element. Double-tap + biometric on device.
+- **Phantom on regular Android**: Uses Phantom app for signing. Authorize + sign = two biometric prompts.
+- Both use the same `walletAdapter.transact()` API — the app does not differentiate.
+
+---
+
 ## Demo Script (90 Seconds)
 
 - **0:00** SonicRequest — RPi speaker plays payment WAV → Seeker receives → "Pay 0.5 SOL to Booth #42?" → fingerprint → 440Hz chirp → Explorer confirms in 3 seconds. *"That speaker just took a payment. No QR. No NFC. No internet on the terminal."*
@@ -182,7 +224,7 @@ Open the `SonicVault` folder, sync Gradle, run on device/emulator (API 24+).
 - **0:00** Hook — "24 words control your wallet. How do you back it up? In music."
 - **0:25** Embed seed into WAV, show waveform animation
 - **0:55** Show backup in music library (genre-tagged "Rain on Glass")
-- **1:15** Transmit via ultrasound — live FFT lights up red at 18-22 kHz
+- **1:15** Transmit via ultrasound — live FFT lights up red at 15–19.5 kHz
 - **1:50** Receive on second device — haptic + particle burst + chirp
 - **2:10** Open Sonic Visualiser — SonicVault logo visible in spectrogram
 - **2:35** Sound as Seed — record ambient sound, entropy meter fills, seed generated from sound

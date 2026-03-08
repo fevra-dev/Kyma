@@ -2,6 +2,7 @@ package com.sonicvault.app.data.sound
 
 import android.media.AudioFormat
 import android.media.AudioTrack
+import com.sonicvault.app.domain.model.Protocol
 import com.sonicvault.app.logging.SonicVaultLogger
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -20,18 +21,20 @@ object AcousticTransmitter {
      *
      * @param payload bytes to transmit (e.g. serialized unsigned TX)
      * @param sessionId session identifier for chunk protocol
+     * @param protocol ULTRASONIC (silent) or AUDIBLE (hearable); default ULTRASONIC
      * @param applyFingerprintRandomization when true, randomizes ultrasonic spectral envelope
      * @param onChunkEncoded optional callback for progress
      */
     suspend fun transmitChunked(
         payload: ByteArray,
         sessionId: Int,
+        protocol: Protocol = Protocol.ULTRASONIC,
         applyFingerprintRandomization: Boolean = false,
         onChunkEncoded: ((Int, Int) -> Unit)? = null
     ) {
         val chunks = AcousticChunker.chunk(payload, sessionId)
         for ((idx, chunk) in chunks.withIndex()) {
-            val samples = GgwaveDataOverSound.encode(chunk, com.sonicvault.app.domain.model.Protocol.ULTRASONIC, applyFingerprintRandomization = applyFingerprintRandomization)
+            val samples = GgwaveDataOverSound.encode(chunk, protocol, applyFingerprintRandomization = applyFingerprintRandomization)
                 ?: continue
             playSamples(samples)
             onChunkEncoded?.invoke(idx + 1, chunks.size)
@@ -45,10 +48,15 @@ object AcousticTransmitter {
     /**
      * Transmits a small payload (e.g. 64B signature) in a single ggwave burst.
      *
+     * @param protocol ULTRASONIC (silent) or AUDIBLE (hearable); default ULTRASONIC
      * @param applyFingerprintRandomization when true, randomizes ultrasonic spectral envelope
      */
-    suspend fun transmitSingle(payload: ByteArray, applyFingerprintRandomization: Boolean = false) {
-        val samples = GgwaveDataOverSound.encode(payload, com.sonicvault.app.domain.model.Protocol.ULTRASONIC, applyFingerprintRandomization = applyFingerprintRandomization)
+    suspend fun transmitSingle(
+        payload: ByteArray,
+        protocol: Protocol = Protocol.ULTRASONIC,
+        applyFingerprintRandomization: Boolean = false
+    ) {
+        val samples = GgwaveDataOverSound.encode(payload, protocol, applyFingerprintRandomization = applyFingerprintRandomization)
             ?: return
         playSamples(samples)
     }

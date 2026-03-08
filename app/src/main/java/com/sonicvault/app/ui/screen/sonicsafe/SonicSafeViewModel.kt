@@ -20,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
@@ -50,14 +51,17 @@ class SonicSafeViewModel(
     val state: StateFlow<State> = _state.asStateFlow()
 
     private var receiveJob: Job? = null
+    private var timeoutJob: Job? = null
 
-    /** Start listening for chunked TX from hot device. */
+    /** Start listening for chunked TX from hot device. 60s timeout if no TX received. */
     fun startListening(context: Context) {
         receiveJob?.cancel()
+        timeoutJob?.cancel()
         _state.value = State.Idle
 
         receiveJob = AcousticChunkReceiver.receiveFlow(context)
             .onEach { payload ->
+                timeoutJob?.cancel()
                 SonicVaultLogger.i("[SonicSafeVM] received TX ${payload.size} bytes")
                 _state.value = State.Received(payload)
             }
@@ -66,10 +70,21 @@ class SonicSafeViewModel(
                 _state.value = State.Error("Could not receive transaction. Move devices closer.")
             }
             .launchIn(viewModelScope)
+
+        timeoutJob = viewModelScope.launch {
+            delay(60_000L)
+            if (_state.value is State.Idle) {
+                receiveJob?.cancel()
+                receiveJob = null
+                _state.value = State.Error("No transaction received. Ensure the sender is transmitting.")
+            }
+        }
     }
 
     /** Stop listening. */
     fun stopListening() {
+        timeoutJob?.cancel()
+        timeoutJob = null
         receiveJob?.cancel()
         receiveJob = null
     }
@@ -81,8 +96,14 @@ class SonicSafeViewModel(
         _state.value = State.Received(txBytes)
     }
 
+    /** Magic bytes for 64-byte signature envelope (0x53 0x49 = "SI"). */
+    private val SIG_MAGIC = byteArrayOf(0x53, 0x49)
+
     /**
-     * User approved: MWA signTransactions → transmit signed TX chunked.
+     * User approved: MWA signTransactions → transmit 64-byte signature only (not full TX).
+     *
+     * Optimized: full signed TX ~265B → 3 chunks ~13s; 64B sig → single burst ~5.4s.
+     * Envelope: 2B magic (0x53 0x49) + 64B sig = 66B total, fits transmitSingle.
      *
      * @param sender pre-registered ActivityResultSender (created in MainActivity.onCreate)
      */
@@ -94,10 +115,17 @@ class SonicSafeViewModel(
             try {
                 val signedBytes = signViaMwa(sender, txBytes)
                 if (signedBytes != null) {
+                    val signature = signedBytes.copyOfRange(1, 65)
+                    val envelope = ByteArray(SIG_MAGIC.size + signature.size)
+                    SIG_MAGIC.copyInto(envelope, 0)
+                    signature.copyInto(envelope, SIG_MAGIC.size)
+                    // Transmit 2x with 1s gap so hot device has two chances to catch it
                     withContext(Dispatchers.IO) {
-                        AcousticTransmitter.transmitChunked(signedBytes, sessionId = 2, applyFingerprintRandomization = userPreferences.useAntiFingerprint)
+                        AcousticTransmitter.transmitSingle(envelope, applyFingerprintRandomization = userPreferences.useAntiFingerprint)
+                        delay(1000)
+                        AcousticTransmitter.transmitSingle(envelope, applyFingerprintRandomization = userPreferences.useAntiFingerprint)
                     }
-                    _state.value = State.Success(Base64.getEncoder().encodeToString(signedBytes).take(24) + "…")
+                    _state.value = State.Success(Base64.getEncoder().encodeToString(signature).take(24) + "…")
                 } else {
                     _state.value = State.Error("Sign failed")
                 }

@@ -41,6 +41,7 @@ class NoncePoolSetupViewModel(
     val state: StateFlow<State> = _state.asStateFlow()
 
     val costEstimate: String get() = noncePoolManager.costEstimate(1)
+    val poolCostEstimate: String get() = noncePoolManager.costEstimate(NoncePoolManager.DEFAULT_POOL_SIZE)
 
     /**
      * Discovers nonce accounts for [authorityPubkey] and imports them into the pool.
@@ -141,10 +142,10 @@ class NoncePoolSetupViewModel(
                         }
                         val signedBase64 = Base64.getEncoder().encodeToString(signedPayload)
                         val txSig = withContext(Dispatchers.IO) {
-                            rpcClient.sendTransaction(signedBase64)
+                            rpcClient.sendTransactionWithRetry(signedBase64)
                         }
                         if (txSig == null) {
-                            _state.value = State.Error("Transaction failed to submit. Check balance and try again.")
+                            _state.value = State.Error("Transaction failed to submit. Ensure Phantom is on DEVNET and you have ~0.0014 SOL. Use devnet.faucet.solana.com for airdrop.")
                             return@launch
                         }
                         val noncePubkey = createdNoncePubkey
@@ -180,6 +181,59 @@ class NoncePoolSetupViewModel(
             } catch (e: Exception) {
                 SonicVaultLogger.e("[NoncePoolSetup] createNonceAccount failed", e)
                 _state.value = State.Error(e.message ?: "Create failed")
+            }
+        }
+    }
+
+    /**
+     * Batch-creates [count] nonce accounts via setupPool.
+     * Uses MWA for each TX; inserts created nonces into the pool.
+     */
+    fun setupPool(sender: ActivityResultSender, count: Int = NoncePoolManager.DEFAULT_POOL_SIZE) {
+        _state.value = State.Creating
+
+        viewModelScope.launch {
+            try {
+                val walletAdapter = MobileWalletAdapter(
+                    connectionIdentity = ConnectionIdentity(
+                        identityUri = Uri.parse("https://sonicvault.app"),
+                        iconUri = Uri.parse("/icon.png"),
+                        identityName = "SonicVault"
+                    )
+                )
+
+                val created = withContext(Dispatchers.IO) {
+                    noncePoolManager.setupPool(count = count) signAndSubmit@{ buildTx ->
+                        var noncePubkey: String? = null
+                        val result = walletAdapter.transact(sender, null) { authResult ->
+                            val account = authResult.accounts.firstOrNull() ?: return@transact null
+                            val payerPubkey = io.github.novacrypto.base58.Base58.base58Encode(account.publicKey)
+                            val built = buildTx(payerPubkey) ?: return@transact null
+                            noncePubkey = built.second
+                            val signResult = signTransactions(arrayOf(built.first))
+                            signResult?.signedPayloads?.firstOrNull()
+                        }
+                        when (result) {
+                            is TransactionResult.Success -> {
+                                val signedPayload = result.payload ?: return@signAndSubmit null
+                                val signedBase64 = Base64.getEncoder().encodeToString(signedPayload)
+                                val txSig = rpcClient.sendTransactionWithRetry(signedBase64)
+                                if (txSig != null && noncePubkey != null) Pair(txSig, noncePubkey) else null
+                            }
+                            else -> null
+                        }
+                    }
+                }
+
+                if (created.isEmpty()) {
+                    _state.value = State.Error("No nonce accounts created. Ensure Phantom is on DEVNET with ~0.004 SOL. Use devnet.faucet.solana.com for airdrop.")
+                } else {
+                    _state.value = State.Success("Created ${created.size} nonce account(s)")
+                    SonicVaultLogger.i("[NoncePoolSetup] setupPool created ${created.size} nonces")
+                }
+            } catch (e: Exception) {
+                SonicVaultLogger.e("[NoncePoolSetup] setupPool failed", e)
+                _state.value = State.Error(e.message ?: "Setup pool failed")
             }
         }
     }

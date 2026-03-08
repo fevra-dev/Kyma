@@ -10,12 +10,14 @@ import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
 import android.content.Context
 import com.sonicvault.app.data.solana.AcousticPaymentReceiver
+import com.sonicvault.app.data.solana.SkrConstants
 import com.sonicvault.app.data.solana.SolanaPayUri
 import com.sonicvault.app.data.solana.SolanaRpcClient
 import com.sonicvault.app.data.solana.SolanaTransactionBuilder
 import com.sonicvault.app.data.sound.AcousticAck
 import com.sonicvault.app.logging.SonicVaultLogger
 import io.github.novacrypto.base58.Base58
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,6 +28,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.pow
 import java.util.Base64
 
 /**
@@ -43,7 +46,7 @@ class SonicRequestViewModel(
         data class Received(val uri: SolanaPayUri) : State()
         data object Signing : State()
         data object Confirming : State()
-        data class Success(val signature: String) : State()
+        data class Success(val signature: String, val explorerUrl: String) : State()
         data class Error(val message: String) : State()
     }
 
@@ -105,7 +108,10 @@ class SonicRequestViewModel(
                         withContext(Dispatchers.IO) {
                             AcousticAck.play()
                         }
-                        _state.value = State.Success(result.signature)
+                        _state.value = State.Success(
+                            result.signature,
+                            com.sonicvault.app.data.solana.SolanaRpcClient.explorerUrl(result.signature)
+                        )
                     }
                     is SignResult.Error -> {
                         _state.value = State.Error(result.message)
@@ -140,13 +146,42 @@ class SonicRequestViewModel(
                 rpcClient.getLatestBlockhash()
             } ?: return@transact null
 
-            val lamports = ((uri.amount ?: 0.0) * SolanaTransactionBuilder.LAMPORTS_PER_SOL).toLong()
-            val tx = SolanaTransactionBuilder.buildSolTransfer(
-                fromPubkey = fromPubkey,
-                toPubkey = uri.recipient,
-                lamports = lamports,
-                blockhash = blockhashResult.blockhash
-            ) ?: return@transact null
+            val refs = uri.reference?.filter { it.isNotBlank() }.orEmpty()
+            val tx = when {
+                uri.splToken == SkrConstants.SKR_MINT -> {
+                    val amount = uri.amount ?: 0.0
+                    val amountBaseUnits = (amount * 10.0.pow(SkrConstants.SKR_DECIMALS)).toLong()
+                    val skrTx = SolanaTransactionBuilder.buildSkrTransfer(
+                        fromPubkey = fromPubkey,
+                        toPubkey = uri.recipient,
+                        amountBaseUnits = amountBaseUnits,
+                        blockhash = blockhashResult.blockhash,
+                        references = refs
+                    ) ?: return@transact null
+                    val createAtaIx = SolanaTransactionBuilder.buildCreateAtaIfNeeded(
+                        payer = fromPubkey,
+                        owner = uri.recipient,
+                        mint = SkrConstants.SKR_MINT
+                    )
+                    if (createAtaIx != null) {
+                        skrTx.instructions.add(0, createAtaIx)
+                    }
+                    skrTx
+                }
+                refs.isNotEmpty() -> SolanaTransactionBuilder.buildSolTransferWithReferences(
+                    fromPubkey = fromPubkey,
+                    toPubkey = uri.recipient,
+                    lamports = ((uri.amount ?: 0.0) * SolanaTransactionBuilder.LAMPORTS_PER_SOL).toLong(),
+                    blockhash = blockhashResult.blockhash,
+                    references = refs
+                )
+                else -> SolanaTransactionBuilder.buildSolTransfer(
+                    fromPubkey = fromPubkey,
+                    toPubkey = uri.recipient,
+                    lamports = ((uri.amount ?: 0.0) * SolanaTransactionBuilder.LAMPORTS_PER_SOL).toLong(),
+                    blockhash = blockhashResult.blockhash
+                )
+            } ?: return@transact null
 
             val unsignedBytes = SolanaTransactionBuilder.serializeForSigning(tx) ?: return@transact null
             val signResult = signTransactions(arrayOf(unsignedBytes))
@@ -157,9 +192,16 @@ class SonicRequestViewModel(
             is TransactionResult.Success -> {
                 val signed = result.payload?.let { Base64.getEncoder().encodeToString(it) } ?: return SignResult.Error("No signed payload")
                 val sig = withContext(Dispatchers.IO) {
-                    rpcClient.sendTransaction(signed)
+                    rpcClient.sendTransactionWithRetry(signed)
                 }
-                if (sig != null) SignResult.Success(sig) else SignResult.Error("RPC send failed")
+                if (sig != null) {
+                    withContext(Dispatchers.IO) {
+                        rpcClient.waitForConfirmation(sig, maxAttempts = 5, intervalMs = 2000L)
+                    }
+                    SignResult.Success(sig)
+                } else {
+                    SignResult.Error("RPC send failed")
+                }
             }
             is TransactionResult.NoWalletFound -> SignResult.Error("No wallet found")
             is TransactionResult.Failure -> SignResult.Error(result.e.message ?: "Sign failed")

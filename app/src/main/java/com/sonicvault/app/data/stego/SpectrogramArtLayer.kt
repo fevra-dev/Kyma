@@ -13,7 +13,7 @@ import kotlin.math.sin
  * Frequency partition:
  * - 0-10 kHz:  untouched (audible content)
  * - 11-18 kHz: art zone (logo, text — visible in spectrogram)
- * - 18-22 kHz: ggwave data zone (ultrasonic transmission)
+ * - 15-19.5 kHz: ggwave data zone (ultrasonic transmission)
  *
  * The art is synthesized by generating sine tones at frequencies corresponding to
  * "lit" pixels in a bitmap representation of the desired text/image.

@@ -20,6 +20,7 @@ import com.sonicvault.app.data.sound.AcousticChunkReceiver
 import com.sonicvault.app.data.sound.AcousticTransmitter
 import com.sonicvault.app.logging.SonicVaultLogger
 import io.github.novacrypto.base58.Base58
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,7 +51,7 @@ class SonicSafeHotViewModel(
         data object Building : State()
         data object Transmitting : State()
         data object Listening : State()
-        data class Success(val signature: String) : State()
+        data class Success(val signature: String, val explorerUrl: String) : State()
         data class Error(val message: String) : State()
     }
 
@@ -58,9 +59,13 @@ class SonicSafeHotViewModel(
     val state: StateFlow<State> = _state.asStateFlow()
 
     private var listenJob: Job? = null
+    private var timeoutJob: Job? = null
 
     /** Nonce checked out for current ceremony; must call markConsumed on any outcome. */
     private var checkedOutNonce: NonceAccountEntity? = null
+
+    /** Original unsigned TX bytes; used to reconstruct signed TX from 64-byte signature. */
+    private var originalTxBytes: ByteArray? = null
 
     /**
      * Build TX, transmit chunked, then listen for signed TX and broadcast.
@@ -107,6 +112,8 @@ class SonicSafeHotViewModel(
                     _state.value = State.Error("Transaction too large for acoustic relay (~600 bytes max)")
                     return@launch
                 }
+
+                originalTxBytes = unsignedBytes
 
                 _state.value = State.Transmitting
                 withContext(Dispatchers.IO) {
@@ -226,30 +233,61 @@ class SonicSafeHotViewModel(
 
     private fun listenForSignedAndBroadcast(context: Context) {
         listenJob?.cancel()
+        timeoutJob?.cancel()
+        val unsignedBytes = originalTxBytes
         val signedFlow = AcousticChunkReceiver.receiveFlow(context, sessionIdFilter = 2)
-            .onEach { signedBytes ->
-                SonicVaultLogger.i("[SonicSafeHotVM] received signed TX ${signedBytes.size} bytes")
-                val base64 = Base64.getEncoder().encodeToString(signedBytes)
-                val sig = rpcClient.sendTransaction(base64)
+            .onEach { receivedBytes ->
+                timeoutJob?.cancel()
+                SonicVaultLogger.i("[SonicSafeHotVM] received ${receivedBytes.size} bytes from cold")
+                val signedTxBytes = if (receivedBytes.size == 64 && unsignedBytes != null) {
+                    SolanaTransactionBuilder.reconstructSignedTx(unsignedBytes, receivedBytes)
+                } else if (receivedBytes.size > 64) {
+                    receivedBytes
+                } else {
+                    null
+                }
+                if (signedTxBytes == null) {
+                    SonicVaultLogger.w("[SonicSafeHotVM] invalid payload or missing original TX")
+                    originalTxBytes = null
+                    _state.value = State.Error("Invalid signature received. Try again.")
+                    return@onEach
+                }
+                val base64 = Base64.getEncoder().encodeToString(signedTxBytes)
+                val sig = rpcClient.sendTransactionWithRetry(base64)
                 markConsumedIfNeeded(sig)
                 if (sig != null) {
-                    _state.value = State.Success(sig)
+                    _state.value = State.Success(sig, SolanaRpcClient.explorerUrl(sig))
                 } else {
                     _state.value = State.Error("Transaction could not be sent. Check network and try again.")
                 }
+                originalTxBytes = null
             }
             .catch { e ->
                 SonicVaultLogger.e("[SonicSafeHotVM] listen error", e)
+                originalTxBytes = null
                 markConsumedIfNeeded(null)
                 _state.value = State.Error(e.message ?: "Listen failed")
             }
 
         listenJob = signedFlow.launchIn(viewModelScope)
+
+        timeoutJob = viewModelScope.launch {
+            delay(45_000L)
+            if (_state.value is State.Listening) {
+                listenJob?.cancel()
+                listenJob = null
+                originalTxBytes = null
+                markConsumedIfNeeded(null)
+                _state.value = State.Error("No signature received from cold signer.")
+            }
+        }
     }
 
     private data class BuildResult(val bytes: ByteArray, val nonce: NonceAccountEntity?)
 
     fun reset() {
+        timeoutJob?.cancel()
+        timeoutJob = null
         listenJob?.cancel()
         listenJob = null
         _state.value = State.Idle

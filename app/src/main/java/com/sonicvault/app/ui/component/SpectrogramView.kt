@@ -31,10 +31,10 @@ import kotlin.math.sin
  * - Audible (0-8 kHz):     bars 0-10,  color = onSurfaceVariant (subtle)
  * - Transition (8-11 kHz): bars 11-14, color = tertiary
  * - Art Zone (11-18 kHz):  bars 15-23, color = secondary
- * - Data (18-22 kHz):      bars 24-29, color = RED (highlighted during transmission)
+ * - Data (15-19.5 kHz):    bars 24-29, color = RED (highlighted during transmission)
  * - Inaudible (22-24 kHz): bars 30-31, color = dim
  *
- * The red 18-20kHz highlight is the key "wow" visual during ggwave ultrasonic transmission.
+ * The red 15-19.5 kHz highlight is the key "wow" visual during ggwave ultrasonic transmission.
  */
 
 /** Band definition for frequency-mapped spectrogram coloring. */
@@ -42,7 +42,7 @@ private enum class FrequencyBand(val label: String, val startBin: Int, val endBi
     AUDIBLE("Audible", 0, 11),
     TRANSITION("Transition", 11, 15),
     ART_ZONE("Art Zone", 15, 24),
-    DATA("Data (18-22kHz)", 24, 30),
+    DATA("Data (15-19.5kHz)", 24, 30),
     INAUDIBLE("Inaudible", 30, 32)
 }
 

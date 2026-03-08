@@ -119,13 +119,35 @@ fun NoncePoolSetupScreen(
             }
 
             Text(
-                text = viewModel.costEstimate,
+                text = viewModel.poolCostEstimate,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             val isCreating = state is NoncePoolSetupViewModel.State.Creating
             val mainActivity = LocalContext.current as? MainActivity
+            OutlinedButton(
+                onClick = {
+                    mainActivity?.let { viewModel.setupPool(it.activityResultSender) }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                shape = MaterialTheme.shapes.medium,
+                enabled = !isCreating && mainActivity != null
+            ) {
+                Text(
+                    text = if (isCreating) "CREATING…" else "SETUP POOL (3)",
+                    style = LabelUppercaseStyle
+                )
+            }
+
+            Text(
+                text = viewModel.costEstimate,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
             OutlinedButton(
                 onClick = {
                     mainActivity?.let { viewModel.createNonceAccount(it.activityResultSender) }

@@ -40,7 +40,10 @@ import com.sonicvault.app.ui.screen.message.VoiceMessageScreen
 import com.sonicvault.app.ui.screen.deadrop.DeadDropScreen
 import com.sonicvault.app.ui.screen.sonicrequest.SonicRequestScreen
 import com.sonicvault.app.ui.screen.noncepool.NoncePoolSetupScreen
+import com.sonicvault.app.ui.screen.cnftdrop.CnftDropScreen
 import com.sonicvault.app.ui.screen.matryoshka.MatryoshkaScreen
+import com.sonicvault.app.ui.screen.presence.PresenceOracleScreen
+import com.sonicvault.app.ui.screen.vote.GuardianVoteScreen
 import com.sonicvault.app.util.AutoLockManager
 import kotlinx.coroutines.delay
 
@@ -66,6 +69,9 @@ sealed class Route(val path: String) {
     data object Matryoshka : Route("matryoshka")
     data object AcousticRestore : Route("acoustic_restore")
     data object RestoreBroadcast : Route("restore_broadcast")
+    data object CnftDrop : Route("cnft_drop")
+    data object PresenceOracle : Route("presence_oracle")
+    data object GuardianVote : Route("guardian_vote")
 }
 
 /** Nav host; sharedAudioUri from Share Target launches Recovery. */
@@ -138,7 +144,10 @@ fun SonicVaultNav(
                 onNoncePoolSetup = { navController.navigate(Route.NoncePoolSetup.path) },
                 onMatryoshka = { navController.navigate(Route.Matryoshka.path) },
                 onSplitSeed = { navController.navigate(Route.SplitSeed.path) },
-                onRecombineSeed = { navController.navigate(Route.RecombineSeed.path) }
+                onRecombineSeed = { navController.navigate(Route.RecombineSeed.path) },
+                onCnftDrop = { navController.navigate(Route.CnftDrop.path) },
+                onPresenceOracle = { navController.navigate(Route.PresenceOracle.path) },
+                onGuardianVote = { navController.navigate(Route.GuardianVote.path) }
             )
         }
         composable(Route.Faq.path) {
@@ -224,6 +233,15 @@ fun SonicVaultNav(
         }
         composable(Route.Matryoshka.path) {
             MatryoshkaScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Route.CnftDrop.path) {
+            CnftDropScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Route.PresenceOracle.path) {
+            PresenceOracleScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Route.GuardianVote.path) {
+            GuardianVoteScreen(onBack = { navController.popBackStack() })
         }
     }
         }

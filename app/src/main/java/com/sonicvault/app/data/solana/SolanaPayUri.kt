@@ -1,6 +1,7 @@
 package com.sonicvault.app.data.solana
 
 import com.sonicvault.app.logging.SonicVaultLogger
+import com.solana.core.HotAccount
 import java.net.URLDecoder
 import java.net.URLEncoder
 
@@ -28,8 +29,11 @@ data class SolanaPayUri(
 ) {
     /**
      * Encodes this URI to UTF-8 bytes for acoustic transmission via ggwave.
+     * Auto-generates a reference key for replay tracking when none provided.
      */
     fun encode(): ByteArray {
+        val refs = reference?.filter { it.isNotBlank() }.orEmpty()
+            .ifEmpty { listOf(HotAccount().publicKey.toBase58()) }
         val uri = buildString {
             append("solana:$recipient")
             val params = mutableListOf<String>()
@@ -38,7 +42,7 @@ data class SolanaPayUri(
             message?.let { params.add("message=${URLEncoder.encode(it, Charsets.UTF_8)}") }
             memo?.let { params.add("memo=${URLEncoder.encode(it, Charsets.UTF_8)}") }
             splToken?.let { params.add("spl-token=$it") }
-            reference?.forEach { params.add("reference=$it") }
+            refs.forEach { params.add("reference=$it") }
             if (params.isNotEmpty()) {
                 append("?")
                 append(params.joinToString("&"))

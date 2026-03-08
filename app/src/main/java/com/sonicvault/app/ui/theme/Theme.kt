@@ -19,46 +19,49 @@ import com.sonicvault.app.R
 import androidx.compose.ui.unit.sp
 
 /**
- * Dieter Rams / Japanese minimalist: restrained palette, one accent, neutrals.
- * "Good design is as little design as possible." — Unobtrusive, honest, long-lasting.
- * Accessibility: onSurface/onSurfaceVariant on surface meet WCAG 4.5:1 contrast minimum.
+ * Dieter Rams / Braun T3–inspired: warm neutrals, layered depth, honest materials.
+ * Dark:  #0A0907 chassis → #100E0B panels → #161310 UI → #D4CCBC text (aged paper).
+ * Light: #F5F3F0 chassis → #EFECE8 panels → #E8E5E0 UI → #0A0907 text (warm charcoal).
+ * No cold blue-white; Rams used warm off-whites and cream. Same family, inverted.
  */
 
-/* Light: off-white surface, charcoal/black text, Rams: honest, unobtrusive */
+/* Light: Rams inverse. Warm off-white chassis, charcoal text. No cold blue-white — honest materials. */
 private val LightColorScheme = lightColorScheme(
-    primary = Color(0xFF000000),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFE5E7EB),
-    onPrimaryContainer = Color(0xFF1F2937),
-    secondary = Color(0xFF6B7280),
-    onSecondary = Color(0xFFFFFFFF),
-    surface = Color(0xFFFAFAFA),
-    surfaceContainerLow = Color(0xFFF5F5F5),
-    onSurface = Color(0xFF171717),
-    onSurfaceVariant = Color(0xFF525252),
-    outline = Color(0xFFA3A3A3),
+    primary = Color(0xFF0A0907),           /* Warm charcoal: Rams used black for emphasis on light Braun */
+    onPrimary = Color(0xFFF5F3F0),         /* Warm cream when primary fills (e.g. buttons) */
+    primaryContainer = Color(0xFFE8E5E0), /* Light walnut for primary container */
+    onPrimaryContainer = Color(0xFF0A0907),
+    secondary = Color(0xFF525249),         /* Muted warm gray for secondary */
+    onSecondary = Color(0xFFF5F3F0),
+    surface = Color(0xFFF5F3F0),           /* Chassis: warm off-white, aged paper (Rams light) */
+    surfaceContainerLow = Color(0xFFEFECE8), /* Panels above chassis — subtle depth */
+    surfaceContainer = Color(0xFFE8E5E0), /* UI elements: light walnut */
+    onSurface = Color(0xFF0A0907),         /* Text: warm charcoal, same as dark chassis */
+    onSurfaceVariant = Color(0xFF525249), /* Secondary text: muted warm gray */
+    outline = Color(0xFF9C9892),
     error = Color(0xFF991B1B),
-    onError = Color(0xFFFFFFFF),
+    onError = Color(0xFFF5F3F0),
     errorContainer = Color(0xFFFEE2E2),
     onErrorContainer = Color(0xFF7F1D1D)
 )
 
-/* Dark: dark gray surface, light text, same accent used sparingly */
+/* Dark: Braun T3–inspired. Chassis → panels → UI elements. Aged paper text (Rams on dark Braun). */
 private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFFE5E7EB),
-    onPrimary = Color(0xFF111827),
-    primaryContainer = Color(0xFF374151),
-    onPrimaryContainer = Color(0xFFF9FAFB),
-    secondary = Color(0xFF9CA3AF),
-    onSecondary = Color(0xFF111827),
-    surface = Color(0xFF0A0A0A),
-    surfaceContainerLow = Color(0xFF1A1A1A),
-    onSurface = Color(0xFFFAFAFA),
-    onSurfaceVariant = Color(0xFFA3A3A3),
-    outline = Color(0xFF525252),
-    error = Color(0xFFFCA5A5),
-    onError = Color(0xFF7F1D1D),
-    errorContainer = Color(0xFF450A0A),
+    primary = Color(0xFFD4CCBC),           /* Warm accent: aged paper, used sparingly for emphasis */
+    onPrimary = Color(0xFF0A0907),         /* Chassis dark when primary fills (e.g. buttons) */
+    primaryContainer = Color(0xFF161310),  /* Dark walnut for primary container */
+    onPrimaryContainer = Color(0xFFD4CCBC),
+    secondary = Color(0xFFB8AFA0),         /* Slightly muted for secondary elements */
+    onSecondary = Color(0xFF0A0907),
+    surface = Color(0xFF0A0907),           /* Chassis: warm charcoal, Braun T3 back */
+    surfaceContainerLow = Color(0xFF100E0B), /* Panels above chassis — depth */
+    surfaceContainer = Color(0xFF161310),  /* UI elements: dark walnut */
+    onSurface = Color(0xFFD4CCBC),         /* Text: aged paper, Rams on dark Braun */
+    onSurfaceVariant = Color(0xFFB8AFA0), /* Secondary text: slightly muted */
+    outline = Color(0xFF3D3832),
+    error = Color(0xFFE8A598),
+    onError = Color(0xFF450A0A),
+    errorContainer = Color(0xFF5C2018),
     onErrorContainer = Color(0xFFFEE2E2)
 )
 

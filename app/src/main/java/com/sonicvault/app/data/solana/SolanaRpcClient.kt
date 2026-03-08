@@ -29,6 +29,9 @@ class SolanaRpcClient(
         .build()
 ) {
 
+    /** Helius Sender is mainnet-only; skip it for devnet to avoid silent rejections. */
+    private val isDevnet: Boolean get() = rpcUrl.contains("devnet", ignoreCase = true)
+
     private val blockhashRetryCount = 3
     private val blockhashRetryDelayMs = 1500L
 
@@ -105,12 +108,42 @@ class SolanaRpcClient(
      * @return transaction signature (base58) or null on failure
      */
     suspend fun sendTransaction(signedTransactionBase64: String): String? = withContext(Dispatchers.IO) {
-        // Try Helius Sender first (dual-routing, higher landing rates)
-        val senderResult = trySendViaSender(signedTransactionBase64)
-        if (senderResult != null) return@withContext senderResult
+        // Helius Sender is mainnet-only; skip for devnet (wrong cluster = silent rejection)
+        if (!isDevnet) {
+            val senderResult = trySendViaSender(signedTransactionBase64)
+            if (senderResult != null) return@withContext senderResult
+        }
 
-        // Fallback to standard RPC
+        // Standard RPC (devnet or Sender fallback)
         trySendViaRpc(signedTransactionBase64)
+    }
+
+    /**
+     * Submits a signed transaction with retries and exponential backoff.
+     * Retries up to [maxRetries] times with delays 1s, 2s, 4s between attempts.
+     *
+     * @param signedTransactionBase64 base64-encoded serialized signed transaction
+     * @param maxRetries number of retry attempts (default 3)
+     * @return transaction signature (base58) or null on failure
+     */
+    suspend fun sendTransactionWithRetry(
+        signedTransactionBase64: String,
+        maxRetries: Int = 3
+    ): String? = withContext(Dispatchers.IO) {
+        var lastDelayMs = 0L
+        repeat(maxRetries) { attempt ->
+            val result = sendTransaction(signedTransactionBase64)
+            if (result != null) return@withContext result
+            if (attempt < maxRetries - 1) {
+                lastDelayMs = when (attempt) {
+                    0 -> 1000L
+                    1 -> 2000L
+                    else -> 4000L
+                }
+                delay(lastDelayMs)
+            }
+        }
+        null
     }
 
     /** Helius Sender: POST base64 TX to sender endpoint. */
@@ -166,7 +199,8 @@ class SolanaRpcClient(
             val params = org.json.JSONArray().put(signedTxBase64)
             val options = JSONObject().apply {
                 put("encoding", "base64")
-                put("skipPreflight", false)
+                put("skipPreflight", true)
+                put("maxRetries", 3)
             }
             params.put(options)
 
@@ -192,7 +226,9 @@ class SolanaRpcClient(
             val json = JSONObject(response.body?.string() ?: "{}")
             if (json.has("error")) {
                 val err = json.optJSONObject("error")
-                SonicVaultLogger.w("[SolanaRpc] sendTransaction error: ${err?.optString("message")}")
+                val code = err?.optInt("code", -1)
+                val msg = err?.optString("message", "unknown")
+                SonicVaultLogger.w("[SolanaRpc] sendTransaction error code=$code message=$msg")
                 return null
             }
 
@@ -362,6 +398,91 @@ class SolanaRpcClient(
         }
     }
 
+    /**
+     * Polls signature status until confirmed or max attempts reached.
+     *
+     * @param signature base58 tx signature
+     * @param maxAttempts number of poll attempts
+     * @param intervalMs delay between attempts
+     * @return true if confirmed, false otherwise
+     */
+    suspend fun waitForConfirmation(
+        signature: String,
+        maxAttempts: Int = 5,
+        intervalMs: Long = 2000L
+    ): Boolean = withContext(Dispatchers.IO) {
+        repeat(maxAttempts) { attempt ->
+            try {
+                val sigsArray = org.json.JSONArray().put(signature)
+                val config = JSONObject().apply {
+                    put("commitment", "confirmed")
+                }
+                val params = org.json.JSONArray().put(sigsArray).put(config)
+                val body = JSONObject().apply {
+                    put("jsonrpc", "2.0")
+                    put("id", 7)
+                    put("method", "getSignatureStatuses")
+                    put("params", params)
+                }.toString()
+                val request = Request.Builder()
+                    .url(rpcUrl)
+                    .post(body.toRequestBody(JSON_MEDIA))
+                    .addHeader("Content-Type", "application/json")
+                    .build()
+                val response = client.newCall(request).execute()
+                if (!response.isSuccessful) return@repeat
+                val json = JSONObject(response.body?.string() ?: "{}")
+                if (json.has("error")) return@repeat
+                val result = json.optJSONObject("result") ?: return@repeat
+                val statuses = result.optJSONArray("value") ?: return@repeat
+                if (statuses.length() > 0) {
+                    val status = statuses.optJSONObject(0) ?: return@repeat
+                    val confirmationStatus = status.optString("confirmationStatus", "")
+                    if (confirmationStatus.isNotEmpty() &&
+                        ("confirmed" in confirmationStatus.lowercase() || "finalized" in confirmationStatus.lowercase())
+                    ) {
+                        SonicVaultLogger.i("[SolanaRpc] tx $signature confirmed")
+                        return@withContext true
+                    }
+                }
+            } catch (e: Exception) {
+                SonicVaultLogger.w("[SolanaRpc] getSignatureStatuses attempt ${attempt + 1} failed", e)
+            }
+            if (attempt < maxAttempts - 1) delay(intervalMs)
+        }
+        false
+    }
+
+    /**
+     * Checks RPC connectivity via getHealth.
+     * Used for pre-flight connectivity check before signing ceremonies.
+     *
+     * @return true if RPC responds with "ok", false otherwise
+     */
+    suspend fun getHealth(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val body = JSONObject().apply {
+                put("jsonrpc", "2.0")
+                put("id", 8)
+                put("method", "getHealth")
+            }.toString()
+            val request = Request.Builder()
+                .url(rpcUrl)
+                .post(body.toRequestBody(JSON_MEDIA))
+                .addHeader("Content-Type", "application/json")
+                .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) return@withContext false
+            val json = JSONObject(response.body?.string() ?: "{}")
+            if (json.has("error")) return@withContext false
+            val result = json.optString("result", "")
+            result == "ok"
+        } catch (e: Exception) {
+            SonicVaultLogger.w("[SolanaRpc] getHealth failed", e)
+            false
+        }
+    }
+
     data class BlockhashResult(
         val blockhash: String,
         val lastValidBlockHeight: Long
@@ -375,6 +496,10 @@ class SolanaRpcClient(
         const val HELIUS_SENDER_URL = "https://sender.helius-rpc.com/fast"
 
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
+
+        /** Explorer URL for a transaction signature. */
+        fun explorerUrl(signature: String, cluster: String = "devnet"): String =
+            "https://explorer.solana.com/tx/$signature?cluster=$cluster"
 
         /** Builds Helius RPC URL from BuildConfig API key, falls back to public devnet. */
         fun buildHeliusRpcUrl(): String {

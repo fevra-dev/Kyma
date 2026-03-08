@@ -7,6 +7,8 @@ import com.solana.core.SignaturePubkeyPair
 import com.solana.core.Transaction
 import com.solana.programs.Program
 import com.solana.programs.SystemProgram
+import com.solana.programs.TokenProgram
+import com.sonicvault.app.data.solana.GovernanceConstants
 import com.sonicvault.app.logging.SonicVaultLogger
 import org.bitcoinj.core.Utils
 import java.util.ArrayList
@@ -28,6 +30,7 @@ object SolanaTransactionBuilder {
 
     /** System Program instruction indices (Solana system_instruction.rs). */
     private const val IX_CREATE_ACCOUNT = 0
+    private const val IX_TRANSFER = 2
     private const val IX_ADVANCE_NONCE = 4
     private const val IX_INITIALIZE_NONCE = 6
 
@@ -69,6 +72,146 @@ object SolanaTransactionBuilder {
             tx
         } catch (e: Exception) {
             SonicVaultLogger.e("[SolanaTxBuilder] build failed", e)
+            null
+        }
+    }
+
+    /**
+     * Builds an unsigned SOL transfer with reference keys (read-only non-signers).
+     * Used for Solana Pay: references enable payment tracking by merchant.
+     *
+     * @param references base58 pubkeys appended as read-only AccountMeta
+     */
+    fun buildSolTransferWithReferences(
+        fromPubkey: String,
+        toPubkey: String,
+        lamports: Long,
+        blockhash: String,
+        references: List<String>
+    ): Transaction? {
+        return try {
+            val from = PublicKey(fromPubkey)
+            val to = PublicKey(toPubkey)
+            val keys = ArrayList<AccountMeta>()
+            keys.add(AccountMeta(from, true, true))
+            keys.add(AccountMeta(to, false, true))
+            references.forEach { ref ->
+                keys.add(AccountMeta(PublicKey(ref), false, false))
+            }
+            val data = ByteArray(4 + 8)
+            Utils.uint32ToByteArrayLE(IX_TRANSFER.toLong(), data, 0)
+            writeU64LE(lamports, data, 4)
+            val transferIx = Program.createTransactionInstruction(SystemProgram.PROGRAM_ID, keys, data)
+            val tx = Transaction()
+            tx.add(transferIx)
+            tx.setRecentBlockHash(blockhash)
+            tx.feePayer = from
+            tx.signatures.add(SignaturePubkeyPair(null, from))
+            SonicVaultLogger.d("[SolanaTxBuilder] built transfer with ${references.size} references")
+            tx
+        } catch (e: Exception) {
+            SonicVaultLogger.e("[SolanaTxBuilder] buildSolTransferWithReferences failed", e)
+            null
+        }
+    }
+
+    /**
+     * Derives the Associated Token Account address for (owner, mint).
+     */
+    fun deriveAssociatedTokenAddress(owner: String, mint: String): PublicKey? {
+        return try {
+            PublicKey.associatedTokenAddress(PublicKey(owner), PublicKey(mint)).address
+        } catch (e: Exception) {
+            SonicVaultLogger.e("[SolanaTxBuilder] deriveAssociatedTokenAddress failed", e)
+            null
+        }
+    }
+
+    /**
+     * Builds an unsigned SKR token transfer (TransferChecked).
+     *
+     * @param fromPubkey owner of source ATA (base58)
+     * @param toPubkey recipient wallet (base58); recipient ATA derived
+     * @param amountBaseUnits amount in base units (amount * 10^decimals)
+     * @param blockhash recent blockhash
+     * @param references optional read-only account keys for payment tracking
+     */
+    fun buildSkrTransfer(
+        fromPubkey: String,
+        toPubkey: String,
+        amountBaseUnits: Long,
+        blockhash: String,
+        references: List<String> = emptyList()
+    ): Transaction? {
+        return try {
+            val from = PublicKey(fromPubkey)
+            val to = PublicKey(toPubkey)
+            val mint = PublicKey(SkrConstants.SKR_MINT)
+            val senderAta = deriveAssociatedTokenAddress(fromPubkey, SkrConstants.SKR_MINT)
+                ?: return null
+            val recipientAta = deriveAssociatedTokenAddress(toPubkey, SkrConstants.SKR_MINT)
+                ?: return null
+            val transferIx = TokenProgram.transferChecked(
+                source = senderAta,
+                destination = recipientAta,
+                amount = amountBaseUnits,
+                decimals = SkrConstants.SKR_DECIMALS.toByte(),
+                owner = from,
+                tokenMint = mint
+            )
+            val keys = transferIx.keys.toMutableList()
+            references.forEach { ref ->
+                keys.add(AccountMeta(PublicKey(ref), false, false))
+            }
+            val transferIxWithRefs = Program.createTransactionInstruction(
+                TokenProgram.PROGRAM_ID,
+                keys,
+                transferIx.data
+            )
+            val tx = Transaction()
+            tx.add(transferIxWithRefs)
+            tx.setRecentBlockHash(blockhash)
+            tx.feePayer = from
+            tx.signatures.add(SignaturePubkeyPair(null, from))
+            SonicVaultLogger.d("[SolanaTxBuilder] built SKR transfer $amountBaseUnits base units")
+            tx
+        } catch (e: Exception) {
+            SonicVaultLogger.e("[SolanaTxBuilder] buildSkrTransfer failed", e)
+            null
+        }
+    }
+
+    /**
+     * Builds create-associated-token-account instruction (idempotent).
+     * Use before SKR transfer when recipient may not have an ATA.
+     * Instruction index 1 = CreateIdempotent (succeeds if account already exists).
+     */
+    fun buildCreateAtaIfNeeded(
+        payer: String,
+        owner: String,
+        mint: String
+    ): com.solana.core.TransactionInstruction? {
+        return try {
+            val payerKey = PublicKey(payer)
+            val ownerKey = PublicKey(owner)
+            val mintKey = PublicKey(mint)
+            val ata = deriveAssociatedTokenAddress(owner, mint) ?: return null
+            val keys = listOf(
+                AccountMeta(payerKey, true, true),
+                AccountMeta(ata, false, true),
+                AccountMeta(ownerKey, false, false),
+                AccountMeta(mintKey, false, false),
+                AccountMeta(SystemProgram.PROGRAM_ID, false, false),
+                AccountMeta(TokenProgram.PROGRAM_ID, false, false),
+                AccountMeta(com.solana.programs.TokenProgram.SYSVAR_RENT_PUBKEY, false, false)
+            )
+            Program.createTransactionInstruction(
+                PublicKey(SkrConstants.ATA_PROGRAM_ID),
+                keys,
+                byteArrayOf(1) // CreateIdempotent instruction index
+            )
+        } catch (e: Exception) {
+            SonicVaultLogger.e("[SolanaTxBuilder] buildCreateAtaIfNeeded failed", e)
             null
         }
     }
@@ -250,6 +393,64 @@ object SolanaTransactionBuilder {
             tx.serialize(com.solana.core.SerializeConfig(verifySignatures = false))
         } catch (e: Exception) {
             SonicVaultLogger.e("[SolanaTxBuilder] serializeForSigning failed", e)
+            null
+        }
+    }
+
+    /**
+     * Reconstructs a signed transaction from unsigned bytes by replacing the 64-byte
+     * signature placeholder at bytes 1..64 with the real Ed25519 signature.
+     *
+     * Used for cold-sign optimization: cold transmits only 64-byte sig; hot reconstructs
+     * full signed TX from stored unsigned bytes.
+     *
+     * @param unsignedBytes serialized unsigned TX (with zeroed sig at 1..64)
+     * @param signature 64-byte Ed25519 signature from cold signer
+     * @return signed transaction bytes for sendTransaction RPC, or null if invalid
+     */
+    fun reconstructSignedTx(unsignedBytes: ByteArray, signature: ByteArray): ByteArray? {
+        if (signature.size != 64 || unsignedBytes.size < 65) return null
+        return try {
+            val result = unsignedBytes.copyOf()
+            signature.copyInto(result, 1, 0, 64)
+            SonicVaultLogger.d("[SolanaTxBuilder] reconstructed signed TX ${result.size} bytes")
+            result
+        } catch (e: Exception) {
+            SonicVaultLogger.e("[SolanaTxBuilder] reconstructSignedTx failed", e)
+            null
+        }
+    }
+
+    /**
+     * Builds an unsigned SPL Memo transaction for Guardian Voting demo.
+     * Memo content: "VOTE:{proposalBase58}:{direction}" — proves voter presence and intent.
+     *
+     * @param payerPubkey base58 fee payer (voter)
+     * @param proposalPubkey base58 proposal address
+     * @param direction YES/NO/ABSTAIN
+     * @param blockhash recent blockhash from RPC
+     */
+    fun buildVoteMemoTx(
+        payerPubkey: String,
+        proposalPubkey: String,
+        direction: GovernanceConstants.VoteDirection,
+        blockhash: String
+    ): Transaction? {
+        return try {
+            val payer = PublicKey(payerPubkey)
+            val memo = "VOTE:$proposalPubkey:${direction.name}"
+            val memoBytes = memo.toByteArray(Charsets.UTF_8)
+            val memoProgram = PublicKey(GovernanceConstants.SPL_MEMO_PROGRAM_ID)
+            val ix = Program.createTransactionInstruction(memoProgram, ArrayList(), memoBytes)
+            val tx = Transaction()
+            tx.add(ix)
+            tx.setRecentBlockHash(blockhash)
+            tx.feePayer = payer
+            tx.signatures.add(SignaturePubkeyPair(null, payer))
+            SonicVaultLogger.d("[SolanaTxBuilder] built vote memo: ${memo.take(48)}…")
+            tx
+        } catch (e: Exception) {
+            SonicVaultLogger.e("[SolanaTxBuilder] buildVoteMemoTx failed", e)
             null
         }
     }

@@ -91,14 +91,14 @@ fun FaqScreen(onBack: () -> Unit) {
             FaqSectionHeader("Audio & Transmission")
             FaqItem(
                 question = "Why ultrasonic sound?",
-                answer = "Ultrasonic sound (18–22 kHz) is inaudible to most adults. " +
+                answer = "Ultrasonic sound (15–19.5 kHz) is inaudible to most adults. " +
                         "It lets you transfer your seed between devices without anyone nearby hearing it, " +
                         "reducing shoulder-surfing and audio surveillance risks. " +
                         "The data is encoded using ggwave, a proven data-over-sound library."
             )
             FaqItem(
                 question = "What are the two protocols?",
-                answer = "Ultrasonic (default): 18–20 kHz, inaudible to most adults. Best for private transfers.\n\n" +
+                answer = "Ultrasonic (default): 15–19.5 kHz, inaudible to most adults. Best for private transfers.\n\n" +
                         "Audible: 2–6 kHz, hearable tones. Use if you want confirmation that transfer is happening, " +
                         "or for accessibility. Select on the transmit or receive screen."
             )

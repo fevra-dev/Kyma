@@ -168,6 +168,11 @@ fun SendSolFormContent(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 OutlinedButton(onClick = {
+                    view.context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(s.explorerUrl)))
+                }) {
+                    Text("VIEW IN EXPLORER")
+                }
+                OutlinedButton(onClick = {
                     val ctx = view.context
                     val clipboard = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Signature", s.signature))
