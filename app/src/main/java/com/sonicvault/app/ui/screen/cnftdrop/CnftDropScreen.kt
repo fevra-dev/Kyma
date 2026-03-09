@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.heightIn
@@ -137,7 +138,8 @@ fun CnftDropScreen(
                         onClick = {
                             broadcastEventId = System.currentTimeMillis() and 0x7FFFFFFFFFFFFFFFL
                             viewModel.broadcastDrop(context.applicationContext, broadcastEventId)
-                        }
+                        },
+                        shape = RectangleShape
                     ) {
                         Text("BROADCAST DROP")
                     }
@@ -161,7 +163,8 @@ fun CnftDropScreen(
                                 viewModel.claimDrop(it)
                             }
                         },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp)
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
+                        shape = RectangleShape
                     ) {
                         Text("CLAIM cNFT", style = LabelUppercaseStyle)
                     }
@@ -195,12 +198,13 @@ fun CnftDropScreen(
                     OutlinedButton(
                         onClick = {
                             context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(s.explorerUrl)))
-                        }
+                        },
+                        shape = RectangleShape
                     ) {
                         Text("VIEW IN EXPLORER")
                     }
                     Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                    OutlinedButton(onClick = { viewModel.reset(); viewModel.startListening(context.applicationContext) }) {
+                    OutlinedButton(onClick = { viewModel.reset(); viewModel.startListening(context.applicationContext) }, shape = RectangleShape) {
                         Text("LISTEN AGAIN")
                     }
                 }
@@ -216,7 +220,7 @@ fun CnftDropScreen(
                         color = MaterialTheme.colorScheme.error
                     )
                     Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                    OutlinedButton(onClick = { viewModel.reset(); viewModel.startListening(context.applicationContext) }) {
+                    OutlinedButton(onClick = { viewModel.reset(); viewModel.startListening(context.applicationContext) }, shape = RectangleShape) {
                         Text("TRY AGAIN")
                     }
                 }

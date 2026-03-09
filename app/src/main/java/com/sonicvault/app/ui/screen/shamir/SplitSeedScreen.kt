@@ -41,7 +41,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sonicvault.app.SonicVaultApplication
@@ -85,7 +85,7 @@ private fun ShamirPresetRow(
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = Spacing.xs.dp / 2),
-                shape = RoundedCornerShape(4.dp),
+                shape = RectangleShape,
                 border = BorderStroke(
                     1.dp,
                     if (isSelected) MaterialTheme.colorScheme.primary
@@ -110,7 +110,7 @@ private fun ShamirPresetRow(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Surface(
-                                    shape = RoundedCornerShape(2.dp),
+                                    shape = RectangleShape,
                                     color = if (boxIndex < m) MaterialTheme.colorScheme.primary
                                     else MaterialTheme.colorScheme.surfaceVariant,
                                     modifier = Modifier.size(innerSizeDp)
@@ -254,7 +254,8 @@ fun SplitSeedScreen(onBack: () -> Unit) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(Spacing.md.dp),
-                            enabled = !inProgress && canCreate
+                            enabled = !inProgress && canCreate,
+                            shape = RectangleShape
                         ) {
                             Text(if (inProgress) "CREATING…" else "SPLIT & CREATE SHARES")
                         }
@@ -285,13 +286,15 @@ fun SplitSeedScreen(onBack: () -> Unit) {
                         )
                         OutlinedButton(
                             onClick = { exportFormat = ExportFormat.WAV },
-                            modifier = Modifier.weight(1f).padding(horizontal = Spacing.xs.dp / 2)
+                            modifier = Modifier.weight(1f).padding(horizontal = Spacing.xs.dp / 2),
+                            shape = RectangleShape
                         ) {
                             Text("WAV", style = MaterialTheme.typography.labelSmall)
                         }
                         OutlinedButton(
                             onClick = { exportFormat = ExportFormat.FLAC },
-                            modifier = Modifier.weight(1f).padding(horizontal = Spacing.xs.dp / 2)
+                            modifier = Modifier.weight(1f).padding(horizontal = Spacing.xs.dp / 2),
+                            shape = RectangleShape
                         ) {
                             Text("FLAC", style = MaterialTheme.typography.labelSmall)
                         }
@@ -311,21 +314,22 @@ fun SplitSeedScreen(onBack: () -> Unit) {
                                     shareStegoFile(ctx, result.stegoUri, exportFormat, app.flacExporter)
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RectangleShape
                         ) {
                             Text("TRANSMIT SHARE ${i + 1}")
                         }
                         Spacer(modifier = Modifier.height(Spacing.sm.dp))
                     }
                     Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                    Button(onClick = { viewModel.reset(); onBack() }, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { viewModel.reset(); onBack() }, modifier = Modifier.fillMaxWidth(), shape = RectangleShape) {
                         Text("DONE")
                     }
                 }
                 is SplitSeedState.Error -> {
                     StatusBar(status = s.message)
                     Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                    Button(onClick = { viewModel.reset() }, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { viewModel.reset() }, modifier = Modifier.fillMaxWidth(), shape = RectangleShape) {
                         Text("TRY AGAIN")
                     }
                 }

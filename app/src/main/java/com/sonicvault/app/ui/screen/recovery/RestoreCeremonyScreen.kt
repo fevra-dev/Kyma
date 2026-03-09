@@ -33,6 +33,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.HapticFeedbackConstantsCompat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
@@ -161,7 +162,8 @@ fun RestoreCeremonyScreen(
                                 seedVaultLauncher.launch(intent)
                             }
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RectangleShape
                     ) {
                         Text("OPEN SEED VAULT TO IMPORT")
                     }
@@ -173,7 +175,7 @@ fun RestoreCeremonyScreen(
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    OutlinedButton(onClick = { viewModel.restart() }) {
+                    OutlinedButton(onClick = { viewModel.restart() }, shape = RectangleShape) {
                         Text("RESTART")
                     }
                 }
@@ -184,7 +186,7 @@ fun RestoreCeremonyScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error
                     )
-                    OutlinedButton(onClick = { viewModel.restart() }) {
+                    OutlinedButton(onClick = { viewModel.restart() }, shape = RectangleShape) {
                         Text("RESTART")
                     }
                 }

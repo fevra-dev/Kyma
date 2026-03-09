@@ -1,20 +1,20 @@
 # How to Recover Your Seed
 
-Follow these steps to recover your seed phrase from a Sonic Seed backup:
+Follow these steps to recover your seed phrase from a Kyma backup:
 
-1. **Open the app** — Launch Sonic Seed on your device.
+1. **Open Kyma** — Launch Kyma on your device.
 
-2. **Select Decode mode** — On the home screen, tap DECODE to switch to recovery mode.
+2. **Tap RESTORE** — On the home screen, tap RESTORE under Vault Infrastructure.
 
-3. **Select your backup file** — Tap "RECOVER FROM BACKUP" and choose the backup audio file you saved (WAV or FLAC).
+3. **Choose your backup file** — Select the backup audio file (WAV or FLAC) you saved. You can pick from Downloads, Music, or any folder.
 
-4. **Enter password if used** — If you encrypted the backup with a password, enter it when prompted. For device‑locked backups, use fingerprint or device PIN to unlock.
+4. **Authenticate** — If you encrypted with a password, enter it. For device-locked backups, use fingerprint or PIN.
 
-5. **Copy seed when needed** — Once verified, tap "COPY TO CLIPBOARD" to copy your seed phrase. Use it to restore your wallet in your preferred app.
+5. **Copy your seed** — Once decrypted, tap COPY TO CLIPBOARD to copy your seed phrase. Restore your wallet in Phantom, Solflare, or any BIP-39 compatible app.
 
 ---
 
 **Tips:**
-- Keep your backup file in a safe place (USB drive, cloud storage, or printed/etched).
-- For Shamir split backups, use "RECOVER FROM SHARES" and select the required number of share files.
-- Verify the checksum after recovery if your backup included one.
+- Store backup files in multiple locations — USB drive, cloud, or printed/etched.
+- For Shamir split backups: Settings → Advanced → Recover Shares. Enter the required number of share files.
+- Keep your password safe. Without it, the backup cannot be decrypted.

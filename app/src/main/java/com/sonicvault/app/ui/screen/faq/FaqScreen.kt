@@ -97,10 +97,16 @@ fun FaqScreen(onBack: () -> Unit) {
                         "The data is encoded using ggwave, a proven data-over-sound library."
             )
             FaqItem(
+                question = "How do I send SOL or a payment request?",
+                answer = "Open Kyma → TRANSMIT. Choose SOL Pay, enter amount and recipient address. Tap INITIATE. " +
+                        "The receiving device opens RECEIVE and taps START LISTENER. Hold devices close (~30 cm). " +
+                        "The payment request is transmitted via ultrasonic sound; no QR codes or internet needed."
+            )
+            FaqItem(
                 question = "What are the two protocols?",
                 answer = "Ultrasonic (default): 15–19.5 kHz, inaudible to most adults. Best for private transfers.\n\n" +
-                        "Audible: 2–6 kHz, hearable tones. Use if you want confirmation that transfer is happening, " +
-                        "or for accessibility. Select on the transmit or receive screen."
+                        "Audible: 2–6 kHz, hearable tones. Use for accessibility or when you want confirmation. " +
+                        "Kyma uses ultrasonic by default for Sound Transfer."
             )
             FaqItem(
                 question = "Can someone intercept my transmission?",
@@ -124,9 +130,15 @@ fun FaqScreen(onBack: () -> Unit) {
             )
             FaqItem(
                 question = "When do I need a session code?",
-                answer = "Session code is a shared passphrase (e.g. abc123) for encrypting broadcasts. " +
-                        "Use it when sending to the web receiver (browser) — the web cannot do ECDH handshake, so it needs a shared secret. " +
-                        "Both sender and receiver enter the same code. App-to-app can use secure handshake instead (no code needed)."
+                answer = "Session code is a shared passphrase for encrypting broadcasts to the web receiver. " +
+                        "App-to-app uses secure ECDH handshake by default — no code needed. " +
+                        "Use a session code only when sending to a browser-based receiver."
+            )
+            FaqItem(
+                question = "What is Cold Sign (SonicSafe)?",
+                answer = "Cold Sign lets an air-gapped device sign transactions. Hot device enters recipient and amount, " +
+                        "transmits the unsigned TX via sound. Cold device (with your seed) receives, signs, and transmits " +
+                        "the signature back. Hot device broadcasts. No Bluetooth, no WiFi — sound only."
             )
 
             Spacer(modifier = Modifier.height(Spacing.md.dp))
@@ -135,10 +147,9 @@ fun FaqScreen(onBack: () -> Unit) {
             FaqSectionHeader("Backup & Recovery")
             FaqItem(
                 question = "Can I use a music file as cover audio?",
-                answer = "Yes. You can hide your seed inside any audio file — music, voice memos, podcasts, etc. " +
-                        "Kyma embeds the encrypted data in the audio using LSB steganography. " +
-                        "Use a file of at least 5 seconds. Longer files provide more steganographic capacity. " +
-                        "The \"Upload\" button opens your device's file browser where you can navigate to Music, Downloads, or any folder."
+                answer = "Yes. Kyma hides your seed inside any audio file — music, voice memos, podcasts. " +
+                        "Uses LSB steganography. Minimum 5 seconds; 10–30 seconds is best. " +
+                        "Backups appear as normal tracks in your music library."
             )
             FaqItem(
                 question = "How long should my cover audio be?",
@@ -161,10 +172,11 @@ fun FaqScreen(onBack: () -> Unit) {
                         "This protects against loss (redundancy) and theft (no single point of compromise)."
             )
             FaqItem(
-                question = "Can I recover my seed from the stego audio file?",
-                answer = "Yes. Go to Decode → Recover Backup. Select the audio file containing your hidden seed. " +
-                        "You'll need to authenticate with your biometric or enter your encryption password. " +
-                        "Kyma extracts the hidden encrypted payload and decrypts it to reveal your seed phrase."
+                question = "How do I recover my seed from a backup file?",
+                answer = "Tap RESTORE on the home screen. Choose your backup audio file (WAV or FLAC). " +
+                        "Authenticate with biometric or enter your encryption password. " +
+                        "Kyma extracts and decrypts the payload to reveal your seed phrase. " +
+                        "For Shamir backups, use Recover Shares from Settings → Advanced."
             )
 
             Spacer(modifier = Modifier.height(Spacing.md.dp))
@@ -173,9 +185,15 @@ fun FaqScreen(onBack: () -> Unit) {
             FaqSectionHeader("General")
             FaqItem(
                 question = "What wallets does Kyma support?",
-                answer = "Kyma supports BIP-39 seed phrases (12 or 24 words) with the Solana derivation path " +
-                        "m/44'/501'/0'/0'. This is compatible with Phantom, Solflare, Backpack, and most Solana wallets. " +
-                        "The seed phrase format is standard — you can import/export with any BIP-39 compatible wallet."
+                answer = "Kyma uses BIP-39 seed phrases (12 or 24 words) with Solana derivation m/44'/501'/0'/0'. " +
+                        "Compatible with Phantom, Solflare, Backpack, and most Solana wallets. " +
+                        "Standard seed format — import or export with any BIP-39 wallet."
+            )
+            FaqItem(
+                question = "What is the Nonce Pool?",
+                answer = "Solana transactions expire when the blockhash is old. Acoustic round-trips (15–30 seconds) can exceed that. " +
+                        "A durable nonce account creates long-lived transactions. Nonce Pool lets you discover or create nonce accounts " +
+                        "for reliable acoustic signing."
             )
         }
     }

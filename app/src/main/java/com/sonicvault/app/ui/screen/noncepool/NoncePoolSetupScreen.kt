@@ -109,7 +109,7 @@ fun NoncePoolSetupScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium,
+                shape = androidx.compose.ui.graphics.RectangleShape,
                 enabled = !isDiscovering
             ) {
                 Text(
@@ -133,7 +133,7 @@ fun NoncePoolSetupScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium,
+                shape = androidx.compose.ui.graphics.RectangleShape,
                 enabled = !isCreating && mainActivity != null
             ) {
                 Text(
@@ -155,7 +155,7 @@ fun NoncePoolSetupScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium,
+                shape = androidx.compose.ui.graphics.RectangleShape,
                 enabled = !isCreating && mainActivity != null
             ) {
                 Text(

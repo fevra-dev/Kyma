@@ -144,10 +144,7 @@ fun SonicVaultNav(
                 onNoncePoolSetup = { navController.navigate(Route.NoncePoolSetup.path) },
                 onMatryoshka = { navController.navigate(Route.Matryoshka.path) },
                 onSplitSeed = { navController.navigate(Route.SplitSeed.path) },
-                onRecombineSeed = { navController.navigate(Route.RecombineSeed.path) },
-                onCnftDrop = { navController.navigate(Route.CnftDrop.path) },
-                onPresenceOracle = { navController.navigate(Route.PresenceOracle.path) },
-                onGuardianVote = { navController.navigate(Route.GuardianVote.path) }
+                onRecombineSeed = { navController.navigate(Route.RecombineSeed.path) }
             )
         }
         composable(Route.Faq.path) {

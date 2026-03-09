@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.ui.unit.dp
@@ -198,7 +199,8 @@ private fun KioskTab(
             ).forEach { d ->
                 OutlinedButton(
                     onClick = { direction = d },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    shape = RectangleShape
                 ) {
                     Text(
                         d.name,
@@ -213,7 +215,8 @@ private fun KioskTab(
             onClick = {
                 viewModel.broadcastProposal(context.applicationContext, proposalPubkey, direction)
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            shape = RectangleShape
         ) {
             Text("BROADCAST PROPOSAL", style = LabelUppercaseStyle)
         }
@@ -279,13 +282,15 @@ private fun VoteTab(
                             viewModel.castVote(it)
                         }
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RectangleShape
                 ) {
                     Text("APPROVE & VOTE", style = LabelUppercaseStyle)
                 }
                 Spacer(modifier = Modifier.height(Spacing.sm.dp))
                 OutlinedButton(
-                    onClick = { viewModel.reset(); viewModel.startListening(context.applicationContext) }
+                    onClick = { viewModel.reset(); viewModel.startListening(context.applicationContext) },
+                    shape = RectangleShape
                 ) {
                     Text("DECLINE")
                 }
@@ -319,7 +324,7 @@ private fun VoteTab(
                     color = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.height(Spacing.md.dp))
-                OutlinedButton(onClick = { viewModel.reset(); viewModel.startListening(context.applicationContext) }) {
+                OutlinedButton(onClick = { viewModel.reset(); viewModel.startListening(context.applicationContext) }, shape = RectangleShape) {
                     Text("VOTE AGAIN")
                 }
             }
@@ -335,7 +340,7 @@ private fun VoteTab(
                     color = MaterialTheme.colorScheme.error
                 )
                 Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                OutlinedButton(onClick = { viewModel.reset(); viewModel.startListening(context.applicationContext) }) {
+                OutlinedButton(onClick = { viewModel.reset(); viewModel.startListening(context.applicationContext) }, shape = RectangleShape) {
                     Text("TRY AGAIN")
                 }
             }

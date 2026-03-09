@@ -226,7 +226,7 @@ private fun CertificateCard(cert: AcousticCertificate) {
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ),
-        shape = MaterialTheme.shapes.medium
+        shape = androidx.compose.ui.graphics.RectangleShape
     ) {
         Column(
             modifier = Modifier.padding(Spacing.md.dp),

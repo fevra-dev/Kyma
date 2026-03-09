@@ -5,7 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -176,21 +176,24 @@ fun RecoveryScreen(
                     Spacer(modifier = Modifier.height(Spacing.md.dp))
                     Button(
                         onClick = { picker.launch("audio/*") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RectangleShape
                     ) {
                         Text("SELECT FILE")
                     }
                     Spacer(modifier = Modifier.height(Spacing.sm.dp))
                     OutlinedButton(
                         onClick = onAcousticRestore,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RectangleShape
                     ) {
                         Text("LISTEN FOR ACOUSTIC BACKUP")
                     }
                     Spacer(modifier = Modifier.height(Spacing.xs.dp))
                     OutlinedButton(
                         onClick = onRestoreBroadcast,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RectangleShape
                     ) {
                         Text("TRANSMIT BACKUP")
                     }
@@ -215,7 +218,8 @@ fun RecoveryScreen(
                     Button(
                         onClick = { picker.launch("audio/*") },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !decrypting
+                        enabled = !decrypting,
+                        shape = RectangleShape
                     ) {
                         Text(if (decrypting) "DECRYPTING…" else "SELECT FILE")
                     }
@@ -242,7 +246,8 @@ fun RecoveryScreen(
                                 viewModel.unlockWithVoiceVerification(s.extracted, s.challengeWord, context)
                             }
                         },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RectangleShape
                     ) {
                         Text("VERIFY VOICE")
                     }
@@ -303,7 +308,8 @@ fun RecoveryScreen(
                     Button(
                         onClick = { viewModel.unlockWithPassword(extracted, password) },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = password.isNotBlank()
+                        enabled = password.isNotBlank(),
+                        shape = RectangleShape
                     ) {
                         Text("UNLOCK WITH PASSWORD")
                     }
@@ -315,7 +321,8 @@ fun RecoveryScreen(
                                     viewModel.unlockWithBiometric(extracted, context)
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RectangleShape
                         ) {
                             Text("UNLOCK WITH FINGERPRINT")
                         }
@@ -332,7 +339,7 @@ fun RecoveryScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(Spacing.md.dp))
-                    Button(onClick = { viewModel.reset(); onBack() }, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { viewModel.reset(); onBack() }, modifier = Modifier.fillMaxWidth(), shape = RectangleShape) {
                         Text("DONE")
                     }
                 }
@@ -371,7 +378,8 @@ fun RecoveryScreen(
                             Spacer(modifier = Modifier.height(Spacing.xs.dp))
                             OutlinedButton(
                                 onClick = { seedVaultImportLauncher.launch(importIntent) },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RectangleShape
                             ) {
                                 Text("SAVE TO SEED VAULT")
                             }
@@ -381,7 +389,7 @@ fun RecoveryScreen(
                     Button(
                         onClick = { viewModel.reset(); onBack() },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(4.dp)
+                        shape = RectangleShape
                     ) {
                         Text("DONE")
                     }
@@ -391,11 +399,11 @@ fun RecoveryScreen(
                     LaunchedEffect(s.message) { view.performHapticFeedback(HapticFeedbackConstantsCompat.REJECT) }
                     StatusBar(status = s.message)
                     Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                    Button(onClick = { viewModel.reset(); picker.launch("audio/*") }, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { viewModel.reset(); picker.launch("audio/*") }, modifier = Modifier.fillMaxWidth(), shape = RectangleShape) {
                         Text("TRY AGAIN")
                     }
                     Spacer(modifier = Modifier.height(Spacing.xs.dp))
-                    OutlinedButton(onClick = { viewModel.reset(); picker.launch("audio/*") }, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { viewModel.reset(); picker.launch("audio/*") }, modifier = Modifier.fillMaxWidth(), shape = RectangleShape) {
                         Text("SELECT ANOTHER")
                     }
                 }

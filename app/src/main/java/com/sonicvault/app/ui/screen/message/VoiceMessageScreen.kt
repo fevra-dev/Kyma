@@ -97,7 +97,7 @@ fun VoiceMessageScreen(onBack: () -> Unit) {
             OutlinedButton(
                 onClick = { isRecording = !isRecording },
                 modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium
+                shape = androidx.compose.ui.graphics.RectangleShape
             ) {
                 Text(if (isRecording) "STOP RECORDING" else "START RECORDING")
             }
@@ -139,7 +139,8 @@ fun VoiceMessageScreen(onBack: () -> Unit) {
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = state !is MessageState.Encoding && state !is MessageState.Playing
+                enabled = state !is MessageState.Encoding && state !is MessageState.Playing,
+                shape = androidx.compose.ui.graphics.RectangleShape
             ) {
                 Text(
                     when (state) {

@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
@@ -265,6 +266,7 @@ fun BackupScreen(
                 val canCreate = seedValid && coverSelected && passwordValid
                 val inProgress = state is BackupState.Encrypting || state is BackupState.Embedding || state is BackupState.WritingFile
                 Button(
+                    shape = RectangleShape,
                     onClick = when (state) {
                         is BackupState.Success -> { { viewModel.reset(); onBack() } }
                         is BackupState.Error -> { { viewModel.reset() } }

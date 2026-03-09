@@ -35,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.HapticFeedbackConstantsCompat
@@ -155,7 +156,8 @@ fun RecombineSeedScreen(onBack: () -> Unit) {
                     Button(
                         onClick = { picker.launch("audio/*") },
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !inProgress
+                        enabled = !inProgress,
+                        shape = RectangleShape
                     ) {
                         Text(if (selectedUris.isNotEmpty()) "ADD MORE FILES" else "SELECT SHARE FILES")
                     }
@@ -164,7 +166,8 @@ fun RecombineSeedScreen(onBack: () -> Unit) {
                         OutlinedButton(
                             onClick = { showClearUrisConfirm = true },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = !inProgress
+                            enabled = !inProgress,
+                            shape = RectangleShape
                         ) {
                             Text("CLEAR ALL")
                         }
@@ -173,7 +176,8 @@ fun RecombineSeedScreen(onBack: () -> Unit) {
                             Button(
                                 onClick = { viewModel.startRecombine(context) },
                                 modifier = Modifier.fillMaxWidth(),
-                                enabled = !inProgress
+                                enabled = !inProgress,
+                                shape = RectangleShape
                             ) {
                                 Text(if (inProgress) "COMBINING…" else "RECOVER SEED")
                             }
@@ -200,7 +204,7 @@ fun RecombineSeedScreen(onBack: () -> Unit) {
                         }
                     )
                     Spacer(modifier = Modifier.height(Spacing.xs.dp))
-                    Button(onClick = { viewModel.reset(); onBack() }, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { viewModel.reset(); onBack() }, modifier = Modifier.fillMaxWidth(), shape = RectangleShape) {
                         Text("DONE")
                     }
                 }
@@ -210,7 +214,7 @@ fun RecombineSeedScreen(onBack: () -> Unit) {
                     LaunchedEffect(s.message) { view.performHapticFeedback(HapticFeedbackConstantsCompat.REJECT) }
                     StatusBar(status = s.message)
                     Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                    Button(onClick = { viewModel.reset() }, modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { viewModel.reset() }, modifier = Modifier.fillMaxWidth(), shape = RectangleShape) {
                         Text("TRY AGAIN")
                     }
                 }

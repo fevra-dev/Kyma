@@ -1,7 +1,6 @@
 package com.sonicvault.app.ui.screen.settings
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,7 +17,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -26,24 +24,16 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.sonicvault.app.BuildConfig
-import com.sonicvault.app.data.preferences.UserPreferences
 import com.sonicvault.app.ui.theme.LabelUppercaseStyle
 import com.sonicvault.app.ui.theme.Spacing
 import com.sonicvault.app.util.FeatureFlags
 
 /**
- * Settings: voice unlock, sound transfer, nonce pool, FAQ, recovery guide.
- * Rams: useful (grouped by category), understandable (clear labels),
- * as little design as possible (no decorative elements), thorough (all states considered).
- * Scrollable with nav bar padding for edge-to-edge support.
+ * Settings: essential actions only. Rams: useful, understandable, as little as possible.
+ * Ma: breathing room between sections.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,10 +46,7 @@ fun SettingsScreen(
     onNoncePoolSetup: () -> Unit = {},
     onMatryoshka: () -> Unit = {},
     onSplitSeed: () -> Unit = {},
-    onRecombineSeed: () -> Unit = {},
-    onCnftDrop: () -> Unit = {},
-    onPresenceOracle: () -> Unit = {},
-    onGuardianVote: () -> Unit = {}
+    onRecombineSeed: () -> Unit = {}
 ) {
     Scaffold(
         topBar = {
@@ -91,45 +78,26 @@ fun SettingsScreen(
         ) {
             /* ── AUDIO ── */
             SectionHeader(title = "AUDIO")
-            Text(
-                text = "Two protocols: Audible (2–6 kHz) & Ultrasonic (18–20 kHz).",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(Spacing.sm.dp))
-            /* Anti-fingerprint toggle: randomizes ultrasonic spectral envelope per session */
-            val context = LocalContext.current
-            val userPrefs = remember { UserPreferences(context) }
-            var useAntiFingerprint by remember { mutableStateOf(userPrefs.useAntiFingerprint) }
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Anti-fingerprint (ultrasonic)",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Randomizes spectral envelope to reduce device identification. On by default.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            if (FeatureFlags.VOICE_BIOMETRIC_ENABLED) {
+                OutlinedButton(
+                    onClick = onVoiceUnlock,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    shape = androidx.compose.ui.graphics.RectangleShape
+                ) {
+                    Text("VOICE UNLOCK", style = LabelUppercaseStyle)
                 }
-                Switch(
-                    checked = useAntiFingerprint,
-                    onCheckedChange = {
-                        useAntiFingerprint = it
-                        userPrefs.useAntiFingerprint = it
-                    }
+                Text(
+                    text = "Enroll voice for biometric auth. On-device only.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = Spacing.xs.dp)
                 )
+                Spacer(modifier = Modifier.height(Spacing.sm.dp))
             }
-            Spacer(modifier = Modifier.height(Spacing.sm.dp))
             OutlinedButton(
                 onClick = onDeadDrop,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium
+                shape = androidx.compose.ui.graphics.RectangleShape
             ) {
                 Text("SOUND TRANSFER", style = LabelUppercaseStyle)
             }
@@ -143,7 +111,7 @@ fun SettingsScreen(
             OutlinedButton(
                 onClick = onNoncePoolSetup,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium
+                shape = androidx.compose.ui.graphics.RectangleShape
             ) {
                 Text("NONCE POOL", style = LabelUppercaseStyle)
             }
@@ -155,38 +123,12 @@ fun SettingsScreen(
             )
             SectionDivider()
 
-            /* ── SECURITY ── */
-            SectionHeader(title = "SECURITY")
-            Text(
-                text = "All data stays on your device. Nothing is uploaded.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = Spacing.sm.dp)
-            )
-            if (FeatureFlags.VOICE_BIOMETRIC_ENABLED) {
-                OutlinedButton(
-                    onClick = onVoiceUnlock,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Text("VOICE UNLOCK", style = LabelUppercaseStyle)
-                }
-                Text(
-                    text = "Enroll your voice for biometric authentication. On-device only.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = Spacing.xs.dp)
-                )
-            }
-
-            SectionDivider()
-
             /* ── ADVANCED ── */
             SectionHeader(title = "ADVANCED")
             OutlinedButton(
                 onClick = onMatryoshka,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium
+                shape = androidx.compose.ui.graphics.RectangleShape
             ) {
                 Text("MATRYOSHKA STEGO", style = LabelUppercaseStyle)
             }
@@ -200,12 +142,12 @@ fun SettingsScreen(
             OutlinedButton(
                 onClick = onSplitSeed,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium
+                shape = androidx.compose.ui.graphics.RectangleShape
             ) {
                 Text("SPLIT BACKUP", style = LabelUppercaseStyle)
             }
             Text(
-                text = "Shamir 2-of-3: split seed into 3 shares, recover with any 2.",
+                text = "Shamir: split seed into shares.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = Spacing.xs.dp)
@@ -214,57 +156,12 @@ fun SettingsScreen(
             OutlinedButton(
                 onClick = onRecombineSeed,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium
+                shape = androidx.compose.ui.graphics.RectangleShape
             ) {
                 Text("RECOVER SHARES", style = LabelUppercaseStyle)
             }
             Text(
-                text = "Recombine Shamir shares to restore your seed phrase.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = Spacing.xs.dp)
-            )
-            SectionDivider()
-
-            /* ── TIER 2 DEMOS ── */
-            SectionHeader(title = "TIER 2 DEMOS")
-            OutlinedButton(
-                onClick = onCnftDrop,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Text("cNFT ACOUSTIC DROP", style = LabelUppercaseStyle)
-            }
-            Text(
-                text = "Listen for event_id, claim compressed NFT to wallet.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = Spacing.xs.dp)
-            )
-            Spacer(modifier = Modifier.height(Spacing.xs.dp))
-            OutlinedButton(
-                onClick = onPresenceOracle,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Text("PRESENCE ORACLE", style = LabelUppercaseStyle)
-            }
-            Text(
-                text = "Acoustic certificate assembly with dual-signature flow.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = Spacing.xs.dp)
-            )
-            Spacer(modifier = Modifier.height(Spacing.xs.dp))
-            OutlinedButton(
-                onClick = onGuardianVote,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Text("GUARDIAN VOTING", style = LabelUppercaseStyle)
-            }
-            Text(
-                text = "Broadcast proposal, receive vote via acoustic return.",
+                text = "Recombine shares to restore your seed phrase.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = Spacing.xs.dp)
@@ -276,7 +173,7 @@ fun SettingsScreen(
             OutlinedButton(
                 onClick = onFaq,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium
+                shape = androidx.compose.ui.graphics.RectangleShape
             ) {
                 Text("FAQ", style = LabelUppercaseStyle)
             }
@@ -284,7 +181,7 @@ fun SettingsScreen(
             OutlinedButton(
                 onClick = onRecoveryGuide,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.medium
+                shape = androidx.compose.ui.graphics.RectangleShape
             ) {
                 Text("RECOVERY GUIDE", style = LabelUppercaseStyle)
             }
@@ -293,6 +190,12 @@ fun SettingsScreen(
 
             /* ── ABOUT ── */
             SectionHeader(title = "ABOUT")
+            Text(
+                text = "All data stays on your device. Nothing is uploaded.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = Spacing.xs.dp)
+            )
             Text(
                 text = "Kyma — Acoustic Cryptography",
                 style = MaterialTheme.typography.bodySmall,
@@ -320,13 +223,13 @@ fun SettingsScreen(
     }
 }
 
-/** Category header label. Rams: clear hierarchy via consistent typography + color. */
+/** Category header label. Rams: clear hierarchy, matches home section labels. */
 @Composable
 private fun SectionHeader(title: String) {
     Text(
-        text = title,
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.primary,
+        text = title.uppercase(),
+        style = LabelUppercaseStyle,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(bottom = Spacing.xs.dp)
     )
 }

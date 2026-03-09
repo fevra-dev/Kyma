@@ -29,7 +29,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
@@ -39,6 +39,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +51,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.runtime.Composable
@@ -855,17 +859,34 @@ fun DeadDropScreen(
     val outlineColor = MaterialTheme.colorScheme.outline
     val modeSelectorEnabled = isIdle
 
-    /* ═══════════════════════════════════════════════════════════════
-       LAYOUT: Toggle → Content (scrollable) → Visualizer → Button
-       ═══════════════════════════════════════════════════════════════ */
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
-            .systemBarsPadding()
-    ) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("SOUND TRANSFER", style = MaterialTheme.typography.titleMedium) },
+                navigationIcon = {
+                    IconButton(
+                        onClick = { viewModel.stop(); hotViewModel.reset(); onBack() },
+                        modifier = Modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                )
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .background(MaterialTheme.colorScheme.surface)
+                .navigationBarsPadding()
+        ) {
 
-        /* ── TX / RX TOGGLE — full width, high contrast, no rounding ── */
+            /* ── TX / RX TOGGLE — full width, high contrast, no rounding ── */
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1178,8 +1199,8 @@ fun DeadDropScreen(
                                 Spacer(modifier = Modifier.height(Spacing.xs.dp))
                                 OutlinedButton(onClick = {
                                     context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(hs.explorerUrl)))
-                                }) { Text("VIEW IN EXPLORER") }
-                                OutlinedButton(onClick = { hotViewModel.reset() }) { Text("DONE") }
+                                }, shape = RectangleShape) { Text("VIEW IN EXPLORER") }
+                                OutlinedButton(onClick = { hotViewModel.reset() }, shape = RectangleShape) { Text("DONE") }
                             }
                         }
                         is SonicSafeHotViewModel.State.Error -> {
@@ -1192,7 +1213,7 @@ fun DeadDropScreen(
                             ) {
                                 Text(hs.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
                                 Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                                OutlinedButton(onClick = { hotViewModel.reset() }) { Text("TRY AGAIN") }
+                                OutlinedButton(onClick = { hotViewModel.reset() }, shape = RectangleShape) { Text("TRY AGAIN") }
                             }
                         }
                         else -> {}
@@ -1224,7 +1245,7 @@ fun DeadDropScreen(
                                     }
                                 }
                                 Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                                OutlinedButton(onClick = { viewModel.reset() }, modifier = Modifier.fillMaxWidth()) { Text("DONE") }
+                                OutlinedButton(onClick = { viewModel.reset() }, modifier = Modifier.fillMaxWidth(), shape = RectangleShape) { Text("DONE") }
                             }
                         }
                         is DeadDropState.Broadcasting, is DeadDropState.AwaitingEcdhResponse -> {
@@ -1247,7 +1268,7 @@ fun DeadDropScreen(
                             ) {
                                 Text(s.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
                                 Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                                OutlinedButton(onClick = { viewModel.reset() }) { Text("TRY AGAIN") }
+                                OutlinedButton(onClick = { viewModel.reset() }, shape = RectangleShape) { Text("TRY AGAIN") }
                             }
                         }
                         else -> {}
@@ -1671,6 +1692,7 @@ fun DeadDropScreen(
                     style = LabelUppercaseStyle.copy(fontWeight = FontWeight.Bold, letterSpacing = 3.sp)
                 )
             }
+        }
         }
     }
 }

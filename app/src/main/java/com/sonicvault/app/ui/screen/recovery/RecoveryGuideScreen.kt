@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
@@ -124,7 +125,8 @@ fun RecoveryGuideScreen(onBack: () -> Unit) {
                     }
                     context.startActivity(Intent.createChooser(shareIntent, "Share recovery guide"))
                 },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+                shape = RectangleShape
             ) {
                 Icon(Icons.Filled.Share, contentDescription = "Share recovery guide", modifier = Modifier.height(20.dp))
                 Spacer(modifier = Modifier.width(Spacing.xs.dp))
@@ -143,7 +145,8 @@ fun RecoveryGuideScreen(onBack: () -> Unit) {
                         )
                     }
                 },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+                shape = RectangleShape
             ) {
                 Icon(Icons.Filled.Download, contentDescription = "Download as Markdown", modifier = Modifier.height(20.dp))
                 Spacer(modifier = Modifier.width(Spacing.xs.dp))
@@ -162,7 +165,8 @@ fun RecoveryGuideScreen(onBack: () -> Unit) {
                         )
                     }
                 },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
+                shape = RectangleShape
             ) {
                 Icon(Icons.Filled.Download, contentDescription = "Download as PDF", modifier = Modifier.height(20.dp))
                 Spacer(modifier = Modifier.width(Spacing.xs.dp))

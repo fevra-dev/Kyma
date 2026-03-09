@@ -141,7 +141,7 @@ fun ColdSignerScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 56.dp),
-                        shape = MaterialTheme.shapes.medium,
+                        shape = androidx.compose.ui.graphics.RectangleShape,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
@@ -154,7 +154,7 @@ fun ColdSignerScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 56.dp),
-                        shape = MaterialTheme.shapes.medium
+                        shape = androidx.compose.ui.graphics.RectangleShape
                     ) {
                         Text("DECLINE")
                     }

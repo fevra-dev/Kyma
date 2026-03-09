@@ -100,7 +100,7 @@ fun ImageMessageScreen(onBack: () -> Unit) {
             OutlinedButton(
                 onClick = { imagePicker.launch("image/*") },
                 modifier = Modifier.fillMaxWidth(),
-                shape = MaterialTheme.shapes.medium
+                shape = androidx.compose.ui.graphics.RectangleShape
             ) {
                 Text(if (imageUri != null) "Image selected ✓" else "PICK IMAGE")
             }
@@ -145,7 +145,8 @@ fun ImageMessageScreen(onBack: () -> Unit) {
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = imageUri != null && state !is MessageState.Encoding && state !is MessageState.Playing
+                enabled = imageUri != null && state !is MessageState.Encoding && state !is MessageState.Playing,
+                shape = androidx.compose.ui.graphics.RectangleShape
             ) {
                 Text(
                     when (state) {

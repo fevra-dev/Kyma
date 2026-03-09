@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.sonicvault.app.ui.component.CardSection
@@ -87,7 +88,8 @@ fun PickCoverStep(
             OutlinedButton(
                 onClick = onPickCover,
                 modifier = Modifier.weight(1f).heightIn(min = 44.dp),
-                enabled = !isRecording
+                enabled = !isRecording,
+                shape = RectangleShape
             ) {
                 Icon(
                     Icons.Filled.UploadFile,
@@ -136,7 +138,8 @@ fun PickCoverStep(
             if (isRecording && recordingElapsedSeconds >= minRecordingSeconds) {
                 OutlinedButton(
                     onClick = onStopRecording,
-                    modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+                    modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                    shape = RectangleShape
                 ) {
                     Icon(Icons.Filled.Stop, contentDescription = "Stop recording", modifier = Modifier.height(20.dp))
                 }
@@ -144,7 +147,8 @@ fun PickCoverStep(
                 OutlinedButton(
                     onClick = onRecordCover,
                     modifier = Modifier.weight(1f).heightIn(min = 44.dp),
-                    enabled = !isRecording
+                    enabled = !isRecording,
+                    shape = RectangleShape
                 ) {
                     Icon(
                         Icons.Filled.Mic,

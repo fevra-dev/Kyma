@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.sonicvault.app.ui.component.AudioVaultIcon
@@ -100,6 +101,7 @@ fun OnboardingScreen(
         }
         Spacer(modifier = Modifier.height(Spacing.md.dp))
         Button(
+            shape = RectangleShape,
             onClick = {
                 if (pagerState.currentPage < lastPage) {
                     scope.launch {
