@@ -685,9 +685,11 @@ private fun UnderlineTextField(
 ) {
     val outlineColor = MaterialTheme.colorScheme.outline
     val cursorColor = MaterialTheme.colorScheme.onSurface
-    val hasTrailing = onClear != null || onPaste != null
-    val trailingCount = (if (onPaste != null) 1 else 0) + (if (onClear != null) 1 else 0)
-    val trailingPaddingDp = (trailingCount * TouchTargetMin.value).dp
+    // Single trailing icon: paste when empty, clear when filled — avoids layout shift
+    val showPaste = onPaste != null && value.isEmpty()
+    val showClear = onClear != null && value.isNotBlank()
+    val hasTrailing = showPaste || showClear
+    val trailingPaddingDp = if (hasTrailing) (TouchTargetMin.value + 4).dp else 0.dp
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -732,9 +734,9 @@ private fun UnderlineTextField(
                     }
                 )
             }
-            if (onPaste != null) {
+            if (showPaste) {
                 IconButton(
-                    onClick = onPaste,
+                    onClick = { onPaste?.invoke() },
                     modifier = Modifier.size(TouchTargetMin)
                 ) {
                     Icon(
@@ -744,10 +746,9 @@ private fun UnderlineTextField(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
                 }
-            }
-            if (onClear != null) {
+            } else if (showClear) {
                 IconButton(
-                    onClick = onClear,
+                    onClick = { onClear?.invoke() },
                     modifier = Modifier.size(TouchTargetMin)
                 ) {
                     Text(
