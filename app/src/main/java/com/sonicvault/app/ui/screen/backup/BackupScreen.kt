@@ -261,8 +261,17 @@ fun BackupScreen(
             if (activity is androidx.fragment.app.FragmentActivity) {
                 val minPasswordLength = com.sonicvault.app.domain.usecase.CreateBackupUseCase.MIN_PASSWORD_LENGTH
                 val passwordValid = password.length >= minPasswordLength
-                val wordCount = seedPhrase.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }.size
-                val seedValid = wordCount == 12 || wordCount == 24
+                val trimmed = seedPhrase.trim()
+                val words = trimmed.split(Regex("\\s+")).filter { it.isNotEmpty() }
+                val wordCount = words.size
+                val charCount = trimmed.length
+                val isPrivateKeyMode = (charCount > 50 && wordCount <= 1) || words.any { it.length > 10 }
+                val base58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+                val seedValid = if (isPrivateKeyMode) {
+                    charCount in 80..95 && trimmed.all { it in base58 }
+                } else {
+                    wordCount == 12 || wordCount == 24
+                }
                 val coverSelected = coverUri != null
                 val canCreate = seedValid && coverSelected && passwordValid
                 val inProgress = state is BackupState.Encrypting || state is BackupState.Embedding || state is BackupState.WritingFile

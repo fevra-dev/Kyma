@@ -686,6 +686,8 @@ private fun UnderlineTextField(
     val outlineColor = MaterialTheme.colorScheme.outline
     val cursorColor = MaterialTheme.colorScheme.onSurface
     val hasTrailing = onClear != null || onPaste != null
+    val trailingCount = (if (onPaste != null) 1 else 0) + (if (onClear != null) 1 else 0)
+    val trailingPaddingDp = (trailingCount * TouchTargetMin.value).dp
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -701,7 +703,7 @@ private fun UnderlineTextField(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 20.dp)
-                        .then(if (hasTrailing) Modifier.padding(end = 80.dp) else Modifier),
+                        .then(if (hasTrailing) Modifier.padding(end = trailingPaddingDp) else Modifier),
                     textStyle = TextStyle(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 12.sp,

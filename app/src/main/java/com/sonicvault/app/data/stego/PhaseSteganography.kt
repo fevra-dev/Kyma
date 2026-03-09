@@ -9,6 +9,8 @@ import kotlin.math.abs
  * Each block (e.g. 512 samples) carries one bit: phase 0 = 0, phase π = 1.
  * Less capacity than LSB but more robust to some transformations; used in hybrid mode.
  * Multi-bin: encode same bits in multiple bins for redundancy; extract uses majority vote.
+ *
+ * Skips block 0 (first 512 samples) to avoid intro distortion on custom cover audio.
  */
 interface PhaseSteganography {
     /**
@@ -48,22 +50,24 @@ class PhaseSteganographyImpl : PhaseSteganography {
         }
         val secretBits = secret.flatMap { byte -> (7 downTo 0).map { (byte.toInt() shr it) and 1 } }
         val numBlocks = coverSamples.size / blockSize
-        require(secretBits.size <= numBlocks) {
-            "Need ${secretBits.size} blocks but have $numBlocks (blockSize=$blockSize)"
+        val usableBlocks = (numBlocks - 1).coerceAtLeast(0) // Skip block 0 to avoid intro distortion
+        require(secretBits.size <= usableBlocks) {
+            "Need ${secretBits.size} blocks but have $usableBlocks usable (blockSize=$blockSize, blocks=$numBlocks)"
         }
-        SonicVaultLogger.d("[PhaseSteganography] embed blocks=$numBlocks secretBits=${secretBits.size} bins=${phaseBinIndices.size}")
+        SonicVaultLogger.d("[PhaseSteganography] embed blocks=$numBlocks skipFirst usable=$usableBlocks secretBits=${secretBits.size} bins=${phaseBinIndices.size}")
         val real = DoubleArray(blockSize)
         val imag = DoubleArray(blockSize)
         val out = coverSamples.copyOf()
-        for (b in 0 until numBlocks) {
-            if (b >= secretBits.size) break
+        for (b in 1 until numBlocks) {
+            val bitIndex = b - 1
+            if (bitIndex >= secretBits.size) break
             val offset = b * blockSize
             for (i in 0 until blockSize) {
                 real[i] = out[offset + i].toDouble()
                 imag[i] = 0.0
             }
             FftHelper.fft(real, imag)
-            val bit = secretBits[b]
+            val bit = secretBits[bitIndex]
             val phaseRad = if (bit == 1) PI else 0.0
             for (phaseBinIndex in phaseBinIndices) {
                 FftHelper.setPhase(real, imag, phaseBinIndex, phaseRad)
@@ -88,7 +92,7 @@ class PhaseSteganographyImpl : PhaseSteganography {
         val imag = DoubleArray(blockSize)
         val bits = mutableListOf<Int>()
         val numBlocks = stegoSamples.size / blockSize
-        for (b in 0 until numBlocks) {
+        for (b in 1 until numBlocks) {
             if (bits.size >= payloadLength * 8) break
             val offset = b * blockSize
             for (i in 0 until blockSize) {

@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,6 +39,8 @@ import com.sonicvault.app.ui.component.CardSection
 import com.sonicvault.app.ui.component.WordByWordSeedDisplay
 import com.sonicvault.app.ui.theme.LabelUppercaseStyle
 import com.sonicvault.app.ui.theme.Spacing
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Recovered seed or private key: clear label, show/hide toggle, CardSection.
@@ -57,6 +60,7 @@ fun ShowSeedStep(
 ) {
     var showPhrase by remember { mutableStateOf(false) }
     var wordByWordMode by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     SonicVaultLogger.d("[ShowSeedStep] recovered length=${seedPhrase.length} isPrivateKey=$isPrivateKey")
 
     val wordCount = remember(seedPhrase) {
@@ -144,13 +148,16 @@ fun ShowSeedStep(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        /** Copy button: on tap, hide seed (show dots) then copy. Clipboard auto-clears after timeout. */
+        /** Copy button: hide seed (password circles) first, yield one frame, then copy. Privacy/security. */
         if (onCopy != null && !wordByWordMode) {
             Spacer(modifier = Modifier.height(Spacing.sm.dp))
             OutlinedButton(
                 onClick = {
                     showPhrase = false
-                    onCopy()
+                    scope.launch {
+                        delay(0) // Yield one frame so UI shows dots before clipboard write
+                        onCopy()
+                    }
                 },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RectangleShape
