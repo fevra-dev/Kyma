@@ -571,9 +571,9 @@ class SolanaRpcClient(
 
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
-        /** Explorer URL for a transaction signature. Uses BuildConfig cluster by default. */
+        /** Explorer URL for a transaction signature. Uses Orb by Helius. */
         fun explorerUrl(signature: String, cluster: String = BuildConfig.SOLANA_CLUSTER): String =
-            "https://explorer.solana.com/tx/$signature?cluster=$cluster"
+            "https://orbmarkets.io/tx/$signature?cluster=$cluster"
 
         /**
          * Builds Helius RPC URL from BuildConfig API key and cluster.
