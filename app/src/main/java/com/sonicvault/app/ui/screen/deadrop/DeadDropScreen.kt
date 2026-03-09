@@ -154,11 +154,12 @@ enum class TxType(val label: String, val icon: String, val unit: String) {
     COLD_SIGN("Cold Sign", "□", "SIG"),
     CNFT_DROP("cNFT Drop", "◈", "NFT");
 
-    val hasAmount: Boolean get() = this == SOL_PAY || this == SKR_TIP
+    val hasAmount: Boolean get() = this == SOL_PAY || this == SKR_TIP || this == COLD_SIGN
     val hasRecipient: Boolean get() = this == SOL_PAY || this == SKR_TIP || this == COLD_SIGN
     val hasEventId: Boolean get() = this == CNFT_DROP
+    /** Unit shown for amount (Cold Sign sends SOL, so ◎) */
+    val amountDisplayUnit: String get() = if (this == COLD_SIGN) "◎" else unit
     val awaitingLabel: String get() = when (this) {
-        COLD_SIGN -> "Awaiting TX Payload"
         CNFT_DROP -> "Event ID Required"
         else -> ""
     }
@@ -1039,7 +1040,7 @@ fun DeadDropScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "TOTAL ${txType.unit}",
+                                "TOTAL ${txType.amountDisplayUnit}",
                                 style = LabelUppercaseStyle,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                             )
@@ -1179,20 +1180,17 @@ fun DeadDropScreen(
                         UnderlineTextField(
                             value = recipient,
                             onValueChange = { recipient = it },
-                            placeholder = if (txType == TxType.COLD_SIGN) "UNSIGNED TX PAYLOAD" else "RECIPIENT ADDRESS",
+                            placeholder = "RECIPIENT ADDRESS",
                             enabled = isIdle,
                             onClear = if (recipient.isNotBlank() && isIdle) { { recipient = "" } } else null,
-                            leadingIcon = if (txType != TxType.COLD_SIGN) {
-                                @androidx.compose.runtime.Composable
-                                { Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) }
-                            } else null,
-                            onPaste = if (txType != TxType.COLD_SIGN) {
-                                {
-                                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
-                                    cm?.primaryClip?.getItemAt(0)?.text?.toString()?.let { recipient = it }
-                                    Unit
-                                }
-                            } else null
+                            leadingIcon = {
+                                Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f))
+                            },
+                            onPaste = {
+                                val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                cm?.primaryClip?.getItemAt(0)?.text?.toString()?.let { recipient = it }
+                                Unit
+                            }
                         )
                     }
                 }
