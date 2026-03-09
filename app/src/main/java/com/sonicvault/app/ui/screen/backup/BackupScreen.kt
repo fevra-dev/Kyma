@@ -79,7 +79,8 @@ fun BackupScreen(
         object : androidx.lifecycle.ViewModelProvider.Factory {
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                 @Suppress("UNCHECKED_CAST")
-                return BackupViewModel(app.createBackupUseCase, app.audioRecorder, app.userPreferences) as T
+                val metadataStore = com.sonicvault.app.data.preferences.BackupMetadataStore(app)
+                return BackupViewModel(app.createBackupUseCase, app.audioRecorder, app.userPreferences, metadataStore) as T
             }
         }
     }

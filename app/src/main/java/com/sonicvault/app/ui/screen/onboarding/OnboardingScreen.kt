@@ -64,8 +64,8 @@ fun OnboardingScreen(
         ) { page ->
             when (page) {
                 0 -> OnboardingPage(
-                    title = "Pay over sound, not QR codes",
-                    body = "Hold two devices close. Transmit encrypted Solana transactions through near-ultrasonic sound. No QR. No NFC. No pairing."
+                    title = "Pay By Ear",
+                    body = "Hold two devices close.\nTransmit encrypted Solana transactions\nthrough near-ultrasonic sound."
                 )
                 1 -> OnboardingPage(
                     title = "Sign in silence",
@@ -82,10 +82,14 @@ fun OnboardingScreen(
             }
         }
         Row(
-            modifier = Modifier.padding(top = Spacing.sm.dp),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.xs.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.sm.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             repeat(pageCount) { index ->
+                if (index > 0) Spacer(modifier = Modifier.size(Spacing.xs.dp))
                 Box(
                     modifier = Modifier
                         .size(8.dp)

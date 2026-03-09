@@ -19,7 +19,8 @@ import androidx.fragment.app.FragmentActivity
 class BackupViewModel(
     private val createBackupUseCase: CreateBackupUseCase,
     private val audioRecorder: AudioRecorder,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val backupMetadataStore: com.sonicvault.app.data.preferences.BackupMetadataStore
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<BackupState>(BackupState.Idle)
@@ -136,9 +137,10 @@ class BackupViewModel(
             val result = createBackupUseCase(_seedPhrase, _coverUri.value!!, activity, _duressPassword, usePasswordMode = true, _password, null, useHybridMode = true, useHardwareBound = false)
             result.fold(
                 onSuccess = { createResult: CreateBackupResult ->
-                    /* Persist last backup timestamp and count for home screen stickiness signal. */
-                    userPreferences.lastBackupTimestamp = System.currentTimeMillis()
+                    val ts = System.currentTimeMillis()
+                    userPreferences.lastBackupTimestamp = ts
                     userPreferences.backupCount = userPreferences.backupCount + 1
+                    backupMetadataStore.addBackup(ts, createResult.stegoUri, createResult.checksum)
                     _state.value = BackupState.Success(
                         createResult.stegoUri,
                         createResult.checksum,

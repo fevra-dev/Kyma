@@ -59,7 +59,8 @@ fun HomeScreen(
     onRecover: () -> Unit,
     onTransmitSound: () -> Unit = {},
     onReceiveSound: () -> Unit = {},
-    onSettings: () -> Unit = {}
+    onSettings: () -> Unit = {},
+    onBackupGallery: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val userPrefs = remember { UserPreferences(context) }
@@ -217,11 +218,13 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(Spacing.md.dp))
 
-                /* ── Last backup status ── */
+                /* ── Last backup status (clickable → gallery) ── */
+                val lastBackupTextContent = if (userPrefs.lastBackupTimestamp > 0) "Last backup: $lastBackupText" else "No backups yet"
                 Text(
-                    text = if (userPrefs.lastBackupTimestamp > 0) "Last backup: $lastBackupText" else "No backups yet",
+                    text = lastBackupTextContent,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = if (userPrefs.lastBackupTimestamp > 0) Modifier.clickable(onClick = onBackupGallery) else Modifier
                 )
 
                 Spacer(modifier = Modifier.height(Spacing.md.dp))

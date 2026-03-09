@@ -53,7 +53,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.runtime.Composable
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.DisposableEffect
@@ -68,6 +70,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
@@ -153,7 +156,6 @@ enum class TxType(val label: String, val icon: String, val unit: String) {
 
     val hasAmount: Boolean get() = this == SOL_PAY || this == SKR_TIP
     val hasRecipient: Boolean get() = this == SOL_PAY || this == SKR_TIP || this == COLD_SIGN
-    val hasMemo: Boolean get() = this == SOL_PAY || this == SKR_TIP
     val hasEventId: Boolean get() = this == CNFT_DROP
     val awaitingLabel: String get() = when (this) {
         COLD_SIGN -> "Awaiting TX Payload"
@@ -629,7 +631,7 @@ private fun AcousticVisualizer(isActive: Boolean, isSuccess: Boolean, modifier: 
 
     Row(
         modifier = modifier
-            .height(72.dp)
+            .height(56.dp)
             .fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
@@ -649,8 +651,8 @@ private fun AcousticVisualizer(isActive: Boolean, isSuccess: Boolean, modifier: 
             )
 
             val barHeight = when {
-                isActive -> 72.dp * scale
-                isSuccess -> 72.dp
+                isActive -> 56.dp * scale
+                isSuccess -> 56.dp
                 else -> 2.dp
             }
             val barColor = when {
@@ -677,50 +679,74 @@ private fun UnderlineTextField(
     placeholder: String,
     enabled: Boolean = true,
     keyboardType: KeyboardType = KeyboardType.Text,
-    onClear: (() -> Unit)? = null
+    onClear: (() -> Unit)? = null,
+    leadingIcon: (@Composable () -> Unit)? = null,
+    onPaste: (() -> Unit)? = null
 ) {
     val outlineColor = MaterialTheme.colorScheme.outline
+    val cursorColor = MaterialTheme.colorScheme.onSurface
+    val hasTrailing = onClear != null || onPaste != null
     Column(modifier = Modifier.fillMaxWidth()) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 20.dp)
-                    .then(if (onClear != null) Modifier.padding(end = 40.dp) else Modifier),
-                textStyle = TextStyle(
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp,
-                    letterSpacing = 2.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                singleLine = true,
-                enabled = enabled,
-                keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-                decorationBox = { innerTextField ->
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        if (value.isEmpty()) {
-                            Text(
-                                placeholder,
-                                style = TextStyle(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
-                                    letterSpacing = 2.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (leadingIcon != null) {
+                Box(modifier = Modifier.padding(end = 8.dp)) { leadingIcon() }
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 20.dp)
+                        .then(if (hasTrailing) Modifier.padding(end = 80.dp) else Modifier),
+                    textStyle = TextStyle(
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        letterSpacing = 2.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    singleLine = true,
+                    enabled = enabled,
+                    cursorBrush = SolidColor(cursorColor),
+                    keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+                    decorationBox = { innerTextField ->
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            if (value.isEmpty()) {
+                                Text(
+                                    placeholder,
+                                    style = TextStyle(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                        letterSpacing = 2.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
+                                    )
                                 )
-                            )
+                            }
+                            innerTextField()
                         }
-                        innerTextField()
                     }
+                )
+            }
+            if (onPaste != null) {
+                IconButton(
+                    onClick = onPaste,
+                    modifier = Modifier.size(TouchTargetMin)
+                ) {
+                    Icon(
+                        Icons.Filled.ContentPaste,
+                        contentDescription = "Paste",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
                 }
-            )
+            }
             if (onClear != null) {
                 IconButton(
                     onClick = onClear,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .size(TouchTargetMin)
+                    modifier = Modifier.size(TouchTargetMin)
                 ) {
                     Text(
                         "✕",
@@ -822,7 +848,6 @@ fun DeadDropScreen(
     var txType by remember { mutableStateOf(TxType.SOL_PAY) }
     var amount by remember { mutableStateOf("") }
     var recipient by remember { mutableStateOf("") }
-    var memo by remember { mutableStateOf("") }
     var eventId by remember { mutableStateOf("") }
 
     /* ── Derived action state (unifies DeadDrop + SonicSafe VMs) ── */
@@ -902,7 +927,7 @@ fun DeadDropScreen(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(72.dp)
+                    .height(56.dp)
                     .background(
                         if (mode == "TX") MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.surface
@@ -923,7 +948,7 @@ fun DeadDropScreen(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(72.dp)
+                    .height(56.dp)
                     .background(
                         if (mode == "RX") MaterialTheme.colorScheme.onSurface
                         else MaterialTheme.colorScheme.surface
@@ -964,7 +989,10 @@ fun DeadDropScreen(
                     if (txType.hasAmount) {
                         BasicTextField(
                             value = amount,
-                            onValueChange = { amount = it },
+                            onValueChange = { s ->
+                                // Allow only valid decimal: digits, optional dot, up to 9 decimals
+                                if (s.isEmpty() || s.matches(Regex("^\\d*\\.?\\d{0,9}$"))) amount = s
+                            },
                             modifier = Modifier.fillMaxWidth(),
                             textStyle = TextStyle(
                                 fontSize = 64.sp,
@@ -973,6 +1001,7 @@ fun DeadDropScreen(
                                 textAlign = TextAlign.Center
                             ),
                             singleLine = true,
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             enabled = isIdle,
                             decorationBox = { innerTextField ->
@@ -1048,7 +1077,7 @@ fun DeadDropScreen(
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(80.dp)
+                                    .height(64.dp)
                                     .background(
                                         if (txType == type) MaterialTheme.colorScheme.surfaceContainer
                                         else MaterialTheme.colorScheme.surface
@@ -1092,7 +1121,7 @@ fun DeadDropScreen(
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(80.dp)
+                                    .height(64.dp)
                                     .background(
                                         if (txType == type) MaterialTheme.colorScheme.surfaceContainer
                                         else MaterialTheme.colorScheme.surface
@@ -1149,17 +1178,18 @@ fun DeadDropScreen(
                             onValueChange = { recipient = it },
                             placeholder = if (txType == TxType.COLD_SIGN) "UNSIGNED TX PAYLOAD" else "RECIPIENT ADDRESS",
                             enabled = isIdle,
-                            onClear = if (recipient.isNotBlank() && isIdle) {
-                                { recipient = "" }
+                            onClear = if (recipient.isNotBlank() && isIdle) { { recipient = "" } } else null,
+                            leadingIcon = if (txType != TxType.COLD_SIGN) {
+                                @androidx.compose.runtime.Composable
+                                { Icon(Icons.Filled.Person, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)) }
+                            } else null,
+                            onPaste = if (txType != TxType.COLD_SIGN) {
+                                {
+                                    val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                    cm?.primaryClip?.getItemAt(0)?.text?.toString()?.let { recipient = it }
+                                    Unit
+                                }
                             } else null
-                        )
-                    }
-                    if (txType.hasMemo) {
-                        UnderlineTextField(
-                            value = memo,
-                            onValueChange = { memo = it },
-                            placeholder = "MEMO (OPTIONAL)",
-                            enabled = isIdle
                         )
                     }
                 }
@@ -1222,15 +1252,13 @@ fun DeadDropScreen(
                     when (val s = state) {
                         is DeadDropState.BroadcastComplete -> {
                             LaunchedEffect(s) { view.performHapticFeedback(HapticFeedbackConstantsCompat.CONFIRM) }
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(Spacing.md.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("Transfer complete", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                                if (s.sas != "PLAIN") {
-                                    Spacer(modifier = Modifier.height(Spacing.sm.dp))
+                            if (s.sas != "PLAIN") {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(Spacing.md.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
                                     Surface(
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RectangleShape,
@@ -1244,20 +1272,9 @@ fun DeadDropScreen(
                                         }
                                     }
                                 }
-                                Spacer(modifier = Modifier.height(Spacing.sm.dp))
-                                OutlinedButton(onClick = { viewModel.reset() }, modifier = Modifier.fillMaxWidth(), shape = RectangleShape) { Text("DONE") }
                             }
                         }
-                        is DeadDropState.Broadcasting, is DeadDropState.AwaitingEcdhResponse -> {
-                            Spacer(modifier = Modifier.height(Spacing.md.dp))
-                            Text(
-                                if (state is DeadDropState.AwaitingEcdhResponse) "Waiting for receiver…" else "Broadcasting…",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.md.dp)
-                            )
-                        }
+                        is DeadDropState.Broadcasting, is DeadDropState.AwaitingEcdhResponse -> { /* No status text; bottom button shows state */ }
                         is DeadDropState.Error -> {
                             LaunchedEffect(s) { view.performHapticFeedback(HapticFeedbackConstantsCompat.REJECT) }
                             Column(
@@ -1277,25 +1294,6 @@ fun DeadDropScreen(
 
             } else {
                 /* ═══════════════════ RECEIVE MODE ═══════════════════ */
-
-                /* Band / Mod metadata */
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = Spacing.md.dp, vertical = Spacing.md.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        "BAND: 15-19.5 KHZ",
-                        style = LabelUppercaseStyle.copy(fontFamily = FontFamily.Monospace),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                    )
-                    Text(
-                        "MOD: MFSK",
-                        style = LabelUppercaseStyle.copy(fontFamily = FontFamily.Monospace),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                    )
-                }
 
                 when (val s = state) {
                     is DeadDropState.Idle -> {
@@ -1320,7 +1318,7 @@ fun DeadDropScreen(
                             }
                             Spacer(modifier = Modifier.height(Spacing.lg.dp))
                             Text(
-                                "SCANNING",
+                                "STANDBY",
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     letterSpacing = 3.sp,
                                     fontWeight = FontWeight.Bold
@@ -1342,8 +1340,6 @@ fun DeadDropScreen(
                                 ReadoutRow("Status", "AWAITING SIGNAL")
                                 HorizontalDivider(thickness = 1.dp, color = outlineColor.copy(alpha = 0.1f))
                                 ReadoutRow("Protocol", "GGWAVE / RS-ECC")
-                                HorizontalDivider(thickness = 1.dp, color = outlineColor.copy(alpha = 0.1f))
-                                ReadoutRow("Buffer", "0%")
                             }
                         }
                     }
@@ -1369,7 +1365,7 @@ fun DeadDropScreen(
                             }
                             Spacer(modifier = Modifier.height(Spacing.lg.dp))
                             Text(
-                                "CARRIER LOCKED",
+                                "LOCKED",
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     letterSpacing = 3.sp,
                                     fontWeight = FontWeight.Bold
@@ -1387,11 +1383,9 @@ fun DeadDropScreen(
                             color = MaterialTheme.colorScheme.surfaceContainer
                         ) {
                             Column(modifier = Modifier.padding(Spacing.sm.dp)) {
-                                ReadoutRow("Status", "RECEIVING…", MaterialTheme.colorScheme.primary)
+                                ReadoutRow("Status", "RECEIVE", MaterialTheme.colorScheme.primary)
                                 HorizontalDivider(thickness = 1.dp, color = outlineColor.copy(alpha = 0.1f))
                                 ReadoutRow("Protocol", "GGWAVE / RS-ECC")
-                                HorizontalDivider(thickness = 1.dp, color = outlineColor.copy(alpha = 0.1f))
-                                ReadoutRow("Buffer", "–")
                             }
                         }
                     }
@@ -1440,8 +1434,6 @@ fun DeadDropScreen(
                                 ReadoutRow("Status", "COMPLETE", MaterialTheme.colorScheme.onSurface)
                                 HorizontalDivider(thickness = 1.dp, color = outlineColor.copy(alpha = 0.1f))
                                 ReadoutRow("Protocol", "GGWAVE / RS-ECC")
-                                HorizontalDivider(thickness = 1.dp, color = outlineColor.copy(alpha = 0.1f))
-                                ReadoutRow("Buffer", "100%")
                             }
                         }
 
@@ -1587,9 +1579,9 @@ fun DeadDropScreen(
         }
         val buttonEnabled = canInitiate || isActive || isSuccess
         val buttonLabel = when {
-            isSuccess -> if (mode == "TX") "SENT" else "DECODED"
+            isSuccess -> "DONE"
             isActive -> if (mode == "RX") "STOP" else "TRANSMITTING…"
-            else -> if (mode == "TX") "INITIATE" else "START LISTENER"
+            else -> if (mode == "TX") "SEND" else "LISTEN"
         }
 
         Box(
@@ -1618,30 +1610,24 @@ fun DeadDropScreen(
                             when (txType) {
                                 TxType.SOL_PAY -> {
                                     val ts = System.currentTimeMillis() / 1000
-                                    val fullMemo = listOfNotNull(
-                                        memo.ifBlank { null }, "ts:$ts"
-                                    ).joinToString(" ")
                                     val uri = SolanaPayUri(
                                         recipient = recipient.trim(),
                                         amount = amount.toDoubleOrNull(),
                                         label = "Kyma",
                                         message = null,
-                                        memo = fullMemo
+                                        memo = "ts:$ts"
                                     )
                                     // Plain broadcast — any device can decode the URI
                                     viewModel.broadcastPlain(String(uri.encode(), Charsets.UTF_8))
                                 }
                                 TxType.SKR_TIP -> {
                                     val ts = System.currentTimeMillis() / 1000
-                                    val fullMemo = listOfNotNull(
-                                        memo.ifBlank { null }, "ts:$ts"
-                                    ).joinToString(" ")
                                     val uri = SolanaPayUri(
                                         recipient = recipient.trim(),
                                         amount = amount.toDoubleOrNull(),
                                         label = "Kyma SKR",
                                         message = null,
-                                        memo = fullMemo,
+                                        memo = "ts:$ts",
                                         splToken = "SKRepMQET9dGvadwUiEmVi1pcSHaH8eak7FXbp6FTQ5R"
                                     )
                                     viewModel.broadcastPlain(String(uri.encode(), Charsets.UTF_8))

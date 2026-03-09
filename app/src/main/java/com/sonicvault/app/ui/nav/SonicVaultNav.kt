@@ -22,6 +22,7 @@ import com.sonicvault.app.SonicVaultApplication
 import com.sonicvault.app.data.preferences.OnboardingPreferences
 import com.sonicvault.app.ui.component.SoundWaveLoader
 import com.sonicvault.app.ui.screen.backup.BackupScreen
+import com.sonicvault.app.ui.screen.backup.BackupGalleryScreen
 import com.sonicvault.app.ui.screen.home.HomeScreen
 import com.sonicvault.app.ui.screen.onboarding.OnboardingScreen
 import com.sonicvault.app.ui.screen.settings.SettingsScreen
@@ -51,6 +52,7 @@ sealed class Route(val path: String) {
     data object Home : Route("home")
     data object Settings : Route("settings")
     data object Backup : Route("backup")
+    data object BackupGallery : Route("backup_gallery")
     data object Recovery : Route("recovery")
     data object SplitSeed : Route("split_seed")
     data object RecombineSeed : Route("recombine_seed")
@@ -131,7 +133,8 @@ fun SonicVaultNav(
                 onRecover = { navController.navigate(Route.Recovery.path) },
                 onTransmitSound = { navController.navigate("sound_transfer/transmit") },
                 onReceiveSound = { navController.navigate("sound_transfer/receive") },
-                onSettings = { navController.navigate(Route.Settings.path) }
+                onSettings = { navController.navigate(Route.Settings.path) },
+                onBackupGallery = { navController.navigate(Route.BackupGallery.path) }
             )
         }
         composable(Route.Settings.path) {
@@ -152,6 +155,9 @@ fun SonicVaultNav(
         }
         composable(Route.RecoveryGuide.path) {
             RecoveryGuideScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Route.BackupGallery.path) {
+            BackupGalleryScreen(onBack = { navController.popBackStack() })
         }
         composable(Route.Backup.path) { backStackEntry ->
             BackupScreen(
