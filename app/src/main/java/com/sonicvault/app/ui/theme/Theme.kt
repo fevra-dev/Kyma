@@ -122,15 +122,16 @@ val JetBrainsMonoFamily: FontFamily = FontFamily(
     Font(R.font.jetbrains_mono_regular, FontWeight.Normal)
 )
 
-/** Work Sans SemiBold for brand title (KYMA). Variable font, weight 600. Rams: minimal, geometric. */
+/** Work Sans for brand title (KYMA). Variable font; W700 for confident hierarchy. Rams: minimal, geometric. */
 val WorkSansFamily: FontFamily = FontFamily(
-    Font(R.font.work_sans_wght, FontWeight.W600)
+    Font(R.font.work_sans_wght, FontWeight.W600),
+    Font(R.font.work_sans_wght, FontWeight.W700)
 )
 
-/** Title style for KYMA: Work Sans SemiBold. */
+/** Title style for KYMA: Work Sans Bold. Strong but not overpowering. */
 val HeadlineLargeStyle = TextStyle(
     fontFamily = WorkSansFamily,
-    fontWeight = FontWeight.W600,
+    fontWeight = FontWeight.W700,
     fontSize = 28.sp,
     letterSpacing = (-0.5).sp,
     lineHeight = 36.sp

@@ -135,7 +135,7 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.height(Spacing.xl.dp))
 
-                /* ── Primary actions: TRANSMIT / RECEIVE ── tall tappable cards ── */
+                /* ── Primary actions: TRANSMIT / RECEIVE ── Ma: generous size, confident touch targets ── */
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm.dp)
@@ -143,7 +143,7 @@ fun HomeScreen(
                     Surface(
                         modifier = Modifier
                             .weight(1f)
-                            .heightIn(min = 160.dp)
+                            .heightIn(min = 180.dp)
                             .clickable(onClick = onTransmitSound),
                         color = MaterialTheme.colorScheme.surfaceContainer,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
@@ -157,7 +157,7 @@ fun HomeScreen(
                             verticalArrangement = Arrangement.Center
                         ) {
                             IconTransmit(
-                                size = 48.dp,
+                                size = 56.dp,
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(Spacing.sm.dp))
@@ -167,7 +167,7 @@ fun HomeScreen(
                     Surface(
                         modifier = Modifier
                             .weight(1f)
-                            .heightIn(min = 160.dp)
+                            .heightIn(min = 180.dp)
                             .clickable(onClick = onReceiveSound),
                         color = MaterialTheme.colorScheme.surfaceContainer,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
@@ -181,7 +181,7 @@ fun HomeScreen(
                             verticalArrangement = Arrangement.Center
                         ) {
                             IconReceive(
-                                size = 48.dp,
+                                size = 56.dp,
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(modifier = Modifier.height(Spacing.sm.dp))
@@ -190,7 +190,8 @@ fun HomeScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(Spacing.xl.dp))
+                /* Ma: 64dp between major zones — breathing room before vault (Rams grid) */
+                Spacer(modifier = Modifier.height(64.dp))
 
                 /* ── Divider: VAULT INFRASTRUCTURE ── */
                 Row(
@@ -214,7 +215,7 @@ fun HomeScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(Spacing.sm.dp))
+                Spacer(modifier = Modifier.height(Spacing.md.dp))
 
                 /* ── Last backup status ── */
                 Text(
@@ -223,7 +224,7 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                Spacer(modifier = Modifier.height(Spacing.sm.dp))
+                Spacer(modifier = Modifier.height(Spacing.md.dp))
 
                 /* ── Secondary actions: BACKUP / RESTORE ── subdued text buttons ── */
                 Row(
