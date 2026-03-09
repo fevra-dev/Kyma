@@ -3,6 +3,7 @@ package com.sonicvault.app
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+// import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
@@ -19,7 +20,7 @@ import com.sonicvault.app.ui.theme.SonicVaultTheme
  *
  * Share Target: when launched via ACTION_SEND with audio MIME type, navigates to Recovery with the shared Uri.
  *
- * Screen capture allowed for demos/presentations (FLAG_SECURE removed).
+ * NOTE: FLAG_SECURE disabled for hackathon demo video capture. Re-enable before release.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -33,6 +34,8 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         activityResultSender = ActivityResultSender(this)
+        // FLAG_SECURE disabled for hackathon demo (scrcpy/screenshot); re-enable before release:
+        // window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
         window.decorView.setFitsSystemWindows(false)
         setContent {

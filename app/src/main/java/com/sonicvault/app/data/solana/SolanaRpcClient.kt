@@ -573,7 +573,7 @@ class SolanaRpcClient(
 
         /** Explorer URL for a transaction signature. Uses Orb by Helius. */
         fun explorerUrl(signature: String, cluster: String = BuildConfig.SOLANA_CLUSTER): String =
-            "https://orbmarkets.io/tx/$signature?cluster=$cluster"
+            "https://orb.helius.dev/tx/$signature/"
 
         /**
          * Builds Helius RPC URL from BuildConfig API key and cluster.
